@@ -16,6 +16,19 @@ internal sealed class TableMapping<T> where T : class, new()
 
     internal string CommandText { get; }
 
+    internal string GetColumnName(PropertyInfo property)
+    {
+        foreach (var column in columns)
+        {
+            if (column.Property.Name == property.Name && column.Property.DeclaringType == property.DeclaringType)
+            {
+                return column.Name;
+            }
+        }
+
+        throw new NotSupportedException($"Property '{property.Name}' must be mapped with a Column attribute to be used in a predicate.");
+    }
+
     internal static TableMapping<T> Create()
     {
         var type = typeof(T);
@@ -115,5 +128,5 @@ internal sealed class TableMapping<T> where T : class, new()
         }
     }
 
-    private static string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
+    internal static string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
 }
