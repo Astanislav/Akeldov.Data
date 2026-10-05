@@ -3,7 +3,7 @@ using System.Linq.Expressions;
 using Microsoft.Data.SqlClient;
 using NUnit.Framework;
 
-namespace Akeldov.Data.Tests;
+namespace Akeldov.Data.SqlServer.Tests;
 
 [TestFixture]
 public class SqlConnectionExtensionsTests
@@ -50,8 +50,8 @@ public class SqlConnectionExtensionsTests
     {
         const int minId = 5;
         using var connection = new SqlConnection();
-        using var command = SqlConnectionExtensions.CreateSelectCommand(
-            connection, TableMapping<User>.Create(), user => user.Id >= minId && user.Id < 20);
+        using var command = SelectExecutor.CreateSelectCommand(
+            connection, TableMapping<User>.Create(), SqlServerDialect.Instance, user => user.Id >= minId && user.Id < 20);
 
         Assert.Multiple(() =>
         {
@@ -69,7 +69,7 @@ public class SqlConnectionExtensionsTests
     public void CreateSelectCommand_WithoutPredicate_PreservesUnfilteredQuery()
     {
         using var connection = new SqlConnection();
-        using var command = SqlConnectionExtensions.CreateSelectCommand(connection, TableMapping<User>.Create());
+        using var command = SelectExecutor.CreateSelectCommand(connection, TableMapping<User>.Create(), SqlServerDialect.Instance);
 
         Assert.Multiple(() =>
         {

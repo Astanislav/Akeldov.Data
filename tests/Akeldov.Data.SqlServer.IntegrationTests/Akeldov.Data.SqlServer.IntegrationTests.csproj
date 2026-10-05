@@ -16,7 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Akeldov.Data\Akeldov.Data.csproj" />
+    <ProjectReference Include="..\..\src\Akeldov.Data.SqlServer\Akeldov.Data.SqlServer.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SelectIntegrationTests.cs" Link="SelectIntegrationTests.cs" />
+  </ItemGroup>
 </Project>

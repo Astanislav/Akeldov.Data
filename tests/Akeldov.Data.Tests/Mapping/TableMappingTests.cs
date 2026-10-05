@@ -7,12 +7,16 @@ namespace Akeldov.Data.Tests;
 public class TableMappingTests
 {
     [Test]
-    public void Create_QuotesIdentifiersAndSelectsOnlyMappedProperties()
+    public void Create_PreservesTableAndColumnNames()
     {
         var mapping = TableMapping<EscapedRow>.Create();
 
-        Assert.That(mapping.CommandText,
-            Is.EqualTo("SELECT [select], [na]]me] FROM [custom]]schema].[users]]table]"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(mapping.Table.Schema, Is.EqualTo("custom]schema"));
+            Assert.That(mapping.Table.Name, Is.EqualTo("users]table"));
+            Assert.That(mapping.GetColumnName(typeof(EscapedRow).GetProperty(nameof(EscapedRow.Name))!), Is.EqualTo("na]me"));
+        });
     }
 
     [Test]
@@ -217,7 +221,7 @@ public class TableMappingTests
         [Column("user_id")]
         public int Id { get; set; }
 
-        [Column("USER_ID")]
+        [Column("user_id")]
         public int OtherId { get; set; }
     }
 }

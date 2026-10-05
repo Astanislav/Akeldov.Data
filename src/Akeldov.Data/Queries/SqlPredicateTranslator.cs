@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
-using Microsoft.Data.SqlClient;
 
 namespace Akeldov.Data;
 
@@ -9,18 +8,20 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
 {
     private readonly TableMapping<T> mapping;
     private readonly ParameterExpression rowParameter;
-    private readonly List<SqlParameter> parameters = [];
+    private readonly ISqlDialect dialect;
+    private readonly List<QueryParameter> parameters = [];
 
-    private SqlPredicateTranslator(TableMapping<T> mapping, ParameterExpression rowParameter)
+    private SqlPredicateTranslator(TableMapping<T> mapping, ParameterExpression rowParameter, ISqlDialect dialect)
     {
         this.mapping = mapping;
         this.rowParameter = rowParameter;
+        this.dialect = dialect;
     }
 
-    internal static (string Sql, SqlParameter[] Parameters) Translate(
-        TableMapping<T> mapping, Expression<Func<T, bool>> predicate)
+    internal static (string Sql, QueryParameter[] Parameters) Translate(
+        TableMapping<T> mapping, Expression<Func<T, bool>> predicate, ISqlDialect dialect)
     {
-        var translator = new SqlPredicateTranslator<T>(mapping, predicate.Parameters[0]);
+        var translator = new SqlPredicateTranslator<T>(mapping, predicate.Parameters[0], dialect);
         var sql = translator.TranslatePredicate(predicate.Body);
         return (sql, translator.parameters.ToArray());
     }
@@ -46,7 +47,7 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
         if (expression.Type == typeof(bool))
         {
             var operand = TranslateOperand(expression);
-            return $"({operand.Sql} = 1)";
+            return dialect.FormatBooleanCondition(operand.Sql);
         }
 
         throw Unsupported(expression);
@@ -138,7 +139,7 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
                 throw Unsupported(expression);
             }
 
-            var sql = TableMapping<T>.QuoteIdentifier(mapping.GetColumnName(property));
+            var sql = dialect.QuoteIdentifier(mapping.GetColumnName(property));
             var nullable = !property.PropertyType.IsValueType || Nullable.GetUnderlyingType(property.PropertyType) is not null;
             return new Operand(sql, nullable);
         }
@@ -150,7 +151,7 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
         }
 
         value = NormalizeValue(value);
-        var parameter = new SqlParameter($"@p{parameters.Count}", value);
+        var parameter = new QueryParameter(dialect.GetParameterPlaceholder(parameters.Count), value);
         parameters.Add(parameter);
         return new Operand(parameter.ParameterName, false);
     }

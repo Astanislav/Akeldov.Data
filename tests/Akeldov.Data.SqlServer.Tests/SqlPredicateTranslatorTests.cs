@@ -4,7 +4,7 @@ using System.Linq.Expressions;
 using Microsoft.Data.SqlClient;
 using NUnit.Framework;
 
-namespace Akeldov.Data.Tests;
+namespace Akeldov.Data.SqlServer.Tests;
 
 [TestFixture]
 public class SqlPredicateTranslatorTests
@@ -162,7 +162,7 @@ public class SqlPredicateTranslatorTests
     public void Translate_ColumnNameWithClosingBracket_EscapesIdentifier()
     {
         var result = SqlPredicateTranslator<EscapedRow>.Translate(
-            TableMapping<EscapedRow>.Create(), row => row.Id > 1);
+            TableMapping<EscapedRow>.Create(), row => row.Id > 1, SqlServerDialect.Instance);
 
         Assert.That(result.Sql, Is.EqualTo("([user]]id] > @p0)"));
     }
@@ -171,7 +171,7 @@ public class SqlPredicateTranslatorTests
     public void Translate_InheritedMappedProperty_UsesBaseColumnAttribute()
     {
         var result = SqlPredicateTranslator<DerivedRow>.Translate(
-            TableMapping<DerivedRow>.Create(), row => row.Id > 1);
+            TableMapping<DerivedRow>.Create(), row => row.Id > 1, SqlServerDialect.Instance);
 
         Assert.That(result.Sql, Is.EqualTo("([base_id] > @p0)"));
         Assert.That(result.Parameters[0].Value, Is.EqualTo(1));
@@ -232,7 +232,10 @@ public class SqlPredicateTranslatorTests
     }
 
     private static (string Sql, SqlParameter[] Parameters) Translate(Expression<Func<User, bool>> predicate)
-        => SqlPredicateTranslator<User>.Translate(TableMapping<User>.Create(), predicate);
+    {
+        var result = SqlPredicateTranslator<User>.Translate(TableMapping<User>.Create(), predicate, SqlServerDialect.Instance);
+        return (result.Sql, result.Parameters.Select(parameter => (SqlParameter)SqlServerDialect.Instance.CreateParameter(parameter)).ToArray());
+    }
 
     private static IEnumerable<TestCaseData> UnsupportedPredicates()
     {

@@ -7,8 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
     <InternalsVisibleTo Include="Akeldov.Data.Tests" />
+    <InternalsVisibleTo Include="Akeldov.Data.SqlServer" />
+    <InternalsVisibleTo Include="Akeldov.Data.PostgreSql" />
+    <InternalsVisibleTo Include="Akeldov.Data.SqlServer.Tests" />
+    <InternalsVisibleTo Include="Akeldov.Data.PostgreSql.Tests" />
   </ItemGroup>
 
 </Project>
