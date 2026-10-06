@@ -1,4 +1,4 @@
-using System.Data.Common;
+using System.Data;
 using System.Globalization;
 using System.Reflection;
 
@@ -15,6 +15,8 @@ internal sealed class TableMapping<T> where T : class, new()
     }
 
     internal TableAttribute Table { get; }
+
+    internal IEnumerable<string> ColumnNames => columns.Select(column => column.Name);
 
     internal string CreateSelectSql(ISqlDialect dialect)
     {
@@ -83,13 +85,14 @@ internal sealed class TableMapping<T> where T : class, new()
         return new TableMapping<T>(table, columns.ToArray());
     }
 
-    internal List<T> Read(DbDataReader reader)
+    internal List<T> Read(IDataReader reader, CancellationToken cancellationToken = default)
     {
         var ordinals = columns.Select(column => reader.GetOrdinal(column.Name)).ToArray();
         var rows = new List<T>();
 
         while (reader.Read())
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var row = new T();
             for (var index = 0; index < columns.Length; index++)
             {
@@ -126,6 +129,14 @@ internal sealed class TableMapping<T> where T : class, new()
 
         try
         {
+            if (targetType == typeof(DateTimeOffset) && value is DateTime dateTime)
+            {
+                var utc = dateTime.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+                    : dateTime.ToUniversalTime();
+                return new DateTimeOffset(utc);
+            }
+
             if (targetType.IsEnum)
             {
                 var enumValue = Convert.ChangeType(value, Enum.GetUnderlyingType(targetType), CultureInfo.InvariantCulture);

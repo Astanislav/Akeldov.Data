@@ -12,6 +12,8 @@
     <InternalsVisibleTo Include="Akeldov.Data.PostgreSql" />
     <InternalsVisibleTo Include="Akeldov.Data.SqlServer.Tests" />
     <InternalsVisibleTo Include="Akeldov.Data.PostgreSql.Tests" />
+    <InternalsVisibleTo Include="Akeldov.Data.Kusto" />
+    <InternalsVisibleTo Include="Akeldov.Data.Kusto.Tests" />
   </ItemGroup>
 
 </Project>

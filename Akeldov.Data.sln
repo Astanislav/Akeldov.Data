@@ -23,6 +23,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.SqlServer.Inte
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.PostgreSql.IntegrationTests", "tests\Akeldov.Data.PostgreSql.IntegrationTests\Akeldov.Data.PostgreSql.IntegrationTests.csproj", "{C14073C4-07C2-455D-B768-F55DF385F7EA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.Kusto", "src\Akeldov.Data.Kusto\Akeldov.Data.Kusto.csproj", "{895327B6-2F5D-47DD-AC02-3B369755981F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.Kusto.Tests", "tests\Akeldov.Data.Kusto.Tests\Akeldov.Data.Kusto.Tests.csproj", "{3755375B-1BFC-444D-B1FC-1291EFD79F81}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,6 +65,14 @@ Global
 		{C14073C4-07C2-455D-B768-F55DF385F7EA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C14073C4-07C2-455D-B768-F55DF385F7EA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C14073C4-07C2-455D-B768-F55DF385F7EA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{895327B6-2F5D-47DD-AC02-3B369755981F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{895327B6-2F5D-47DD-AC02-3B369755981F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{895327B6-2F5D-47DD-AC02-3B369755981F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{895327B6-2F5D-47DD-AC02-3B369755981F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -74,5 +86,7 @@ Global
 		{1C7713F2-57A2-411A-8E20-AF0B141CA36F} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
 		{76589922-C7CC-4827-B776-0638171671FA} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
 		{C14073C4-07C2-455D-B768-F55DF385F7EA} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
+		{895327B6-2F5D-47DD-AC02-3B369755981F} = {3DD72945-0244-4636-B5E4-297F8FA93E03}
+		{3755375B-1BFC-444D-B1FC-1291EFD79F81} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
 	EndGlobalSection
 EndGlobal
