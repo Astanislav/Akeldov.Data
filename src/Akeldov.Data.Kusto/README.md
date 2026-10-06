@@ -66,3 +66,11 @@ dotnet test tests/Akeldov.Data.Kusto.Tests/Akeldov.Data.Kusto.Tests.csproj
 Tests cover query construction, SDK parameter passing, result mapping,
 resource ownership, cancellation, and syntax/type validation with Microsoft's
 `Kusto.Language` analyzer. They do not require cluster credentials.
+
+Run integration tests against the Docker-hosted Kusto Emulator:
+
+```powershell
+dotnet test tests/Akeldov.Data.Kusto.IntegrationTests/Akeldov.Data.Kusto.IntegrationTests.csproj
+```
+
+See the [integration test setup and coverage](../../tests/Akeldov.Data.Kusto.IntegrationTests/README.md).

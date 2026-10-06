@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.Kusto", "src\A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.Kusto.Tests", "tests\Akeldov.Data.Kusto.Tests\Akeldov.Data.Kusto.Tests.csproj", "{3755375B-1BFC-444D-B1FC-1291EFD79F81}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Akeldov.Data.Kusto.IntegrationTests", "tests\Akeldov.Data.Kusto.IntegrationTests\Akeldov.Data.Kusto.IntegrationTests.csproj", "{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -73,6 +75,10 @@ Global
 		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3755375B-1BFC-444D-B1FC-1291EFD79F81}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -88,5 +94,6 @@ Global
 		{C14073C4-07C2-455D-B768-F55DF385F7EA} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
 		{895327B6-2F5D-47DD-AC02-3B369755981F} = {3DD72945-0244-4636-B5E4-297F8FA93E03}
 		{3755375B-1BFC-444D-B1FC-1291EFD79F81} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
+		{24E78CE0-6E0D-4F67-A6BC-D42F37D9FEE9} = {A4F09D35-88A8-4EB6-BD9A-D6B9E7D24474}
 	EndGlobalSection
 EndGlobal
