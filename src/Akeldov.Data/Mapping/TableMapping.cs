@@ -18,6 +18,8 @@ internal sealed class TableMapping<T> where T : class, new()
 
     internal IEnumerable<string> ColumnNames => columns.Select(column => column.Name);
 
+    internal IEnumerable<(PropertyInfo Property, string Name)> Columns => columns;
+
     internal string CreateSelectSql(ISqlDialect dialect)
     {
         var names = new HashSet<string>(dialect.ColumnNameComparer);
