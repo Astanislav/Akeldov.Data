@@ -34,6 +34,35 @@ internal static class SelectExecutor
         }
     }
 
+    internal static async Task<List<T>> SelectAsync<T>(
+        DbConnection connection, ISqlDialect dialect, Expression<Func<T, bool>>? predicate = null,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        cancellationToken.ThrowIfCancellationRequested();
+        var mapping = TableMapping<T>.Create();
+        await using var command = CreateSelectCommand(connection, mapping, dialect, predicate);
+        var shouldClose = connection.State == ConnectionState.Closed;
+
+        try
+        {
+            if (shouldClose)
+            {
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return await mapping.ReadAsync(reader, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     internal static DbCommand CreateSelectCommand<T>(
         DbConnection connection, TableMapping<T> mapping, ISqlDialect dialect,
         Expression<Func<T, bool>>? predicate = null)

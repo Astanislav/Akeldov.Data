@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.Reflection;
 
@@ -95,18 +96,38 @@ internal sealed class TableMapping<T> where T : class, new()
         while (reader.Read())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var row = new T();
-            for (var index = 0; index < columns.Length; index++)
-            {
-                var (property, name) = columns[index];
-                var value = reader.GetValue(ordinals[index]);
-                property.SetValue(row, ConvertValue(value, property.PropertyType, name));
-            }
-
-            rows.Add(row);
+            rows.Add(ReadRow(reader, ordinals));
         }
 
         return rows;
+    }
+
+    internal async Task<List<T>> ReadAsync(DbDataReader reader, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var ordinals = columns.Select(column => reader.GetOrdinal(column.Name)).ToArray();
+        var rows = new List<T>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            rows.Add(ReadRow(reader, ordinals));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return rows;
+    }
+
+    private T ReadRow(IDataReader reader, int[] ordinals)
+    {
+        var row = new T();
+        for (var index = 0; index < columns.Length; index++)
+        {
+            var (property, name) = columns[index];
+            var value = reader.GetValue(ordinals[index]);
+            property.SetValue(row, ConvertValue(value, property.PropertyType, name));
+        }
+
+        return row;
     }
 
     private static object? ConvertValue(object value, Type propertyType, string columnName)

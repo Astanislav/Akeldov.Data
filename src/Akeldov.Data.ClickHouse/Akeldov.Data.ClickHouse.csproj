@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ClickHouse.Driver" Version="1.4.0" />
+    <ProjectReference Include="..\Akeldov.Data\Akeldov.Data.csproj" />
+    <InternalsVisibleTo Include="Akeldov.Data.ClickHouse.Tests" />
+  </ItemGroup>
+</Project>
