@@ -5,6 +5,11 @@ namespace Akeldov.Data.PostgreSql;
 
 public static class NpgsqlConnectionExtensions
 {
+    /// <summary>Inserts one row using all properties marked with Column.</summary>
+    /// <remarks>Values are parameterized. Generated columns are not inferred or returned. Connections opened here are closed afterwards.</remarks>
+    public static void Create<T>(this NpgsqlConnection connection, T entity) where T : class, new()
+        => CreateExecutor.Create(connection, PostgreSqlDialect.Instance, entity);
+
     /// <summary>
     /// Reads all rows from the table mapped to T, populating properties marked with Column.
     /// </summary>

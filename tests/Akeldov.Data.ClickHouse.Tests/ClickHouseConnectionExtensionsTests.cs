@@ -12,6 +12,36 @@ public class ClickHouseConnectionExtensionsTests
 {
     [TestCase(false)]
     [TestCase(true)]
+    public async Task Create_UsesNativeParametersAndPreservesConnection(bool initiallyOpen)
+    {
+        using var handler = new FakeServer { ResponseData = [] };
+        using var http = new HttpClient(handler);
+        using var connection = CreateConnection(http);
+        if (initiallyOpen) connection.Open();
+        var entity = new User { Id = 7, Name = "O'Brien'); DROP TABLE users;--", Active = true };
+        connection.Create(entity);
+        Assert.That(handler.Sql, Does.Contain("INSERT INTO `analytics`.`users` (`user_id`, `name`, `score`, `is_active`) VALUES ({p0:Int32}, {p1:String}, NULL, {p2:Bool})"));
+        Assert.That(handler.Sql, Does.Not.Contain(entity.Name));
+        Assert.That(WebUtility.UrlDecode(handler.Uri!.Query), Does.Contain("DROP TABLE"));
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+        await connection.CreateAsync(entity);
+        Assert.That(handler.Requests, Is.EqualTo(2));
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+    }
+
+    [Test]
+    public void CreateAsync_CanceledToken_DoesNotSendRequest()
+    {
+        using var handler = new FakeServer();
+        using var http = new HttpClient(handler);
+        using var connection = CreateConnection(http);
+        Assert.That(async () => await connection.CreateAsync(new User(), new CancellationToken(true)),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(handler.Requests, Is.Zero);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
     public void Select_ReadsDriverBinaryResponseAndPreservesConnectionState(bool initiallyOpen)
     {
         using var handler = new FakeServer();

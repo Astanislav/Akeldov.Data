@@ -64,6 +64,8 @@ public class KustoQueryProviderSelectTests
             await ExecuteCommand(admin, Database,
                 ".set parameter_collision <| datatable(akeldov_p0:int, akeldov_p1:int)[42, 43]", cancellation.Token);
             provider = KustoClientFactory.CreateCslQueryProvider(connection);
+            await ExecuteCommand(admin, Database,
+                ".create table created_rows (name:string, id:guid, score:int, created:datetime, duration:timespan)", cancellation.Token);
         }
         catch
         {
@@ -74,6 +76,35 @@ public class KustoQueryProviderSelectTests
 
     [OneTimeTearDown]
     public Task StopDatabase() => DisposeResources();
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_RoundTripsValuesUsingColumnNames(bool asynchronous)
+    {
+        using var admin = KustoClientFactory.CreateCslAdminProvider(new KustoConnectionStringBuilder(container!.GetConnectionString()));
+        var entity = new CreatedRow
+        {
+            Id = Guid.NewGuid(), Name = "O'Brien\n.ingest inline into table other <| 1",
+            Created = DateTime.UnixEpoch.AddTicks(1234567), Duration = TimeSpan.FromTicks(1234567)
+        };
+        if (asynchronous) await admin.CreateAsync(entity);
+        else admin.Create(entity);
+        var actual = Client.Select<CreatedRow>(row => row.Id == entity.Id).Single();
+        Assert.That(actual.Name, Is.EqualTo(entity.Name));
+        Assert.That(actual.Score, Is.Null);
+        Assert.That(actual.Created, Is.EqualTo(entity.Created));
+        Assert.That(actual.Duration, Is.EqualTo(entity.Duration));
+    }
+
+    [Table(Database, "created_rows")]
+    public class CreatedRow
+    {
+        [Column("id")] public Guid Id { get; set; }
+        [Column("name")] public string? Name { get; set; }
+        [Column("score")] public int? Score { get; set; }
+        [Column("created")] public DateTime Created { get; set; }
+        [Column("duration")] public TimeSpan Duration { get; set; }
+    }
 
     [Test]
     public void Select_ReadsAllRowsAndMappedTypes()

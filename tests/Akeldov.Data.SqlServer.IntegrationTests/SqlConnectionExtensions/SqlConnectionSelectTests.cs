@@ -124,6 +124,7 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
 
 
     protected override DbConnection CreateConnection() => new SqlConnection(connectionString);
+    protected override void Create<T>(DbConnection connection, T entity) => ((SqlConnection)connection).Create(entity);
     protected override string TruncateUsersSql => "TRUNCATE TABLE [integration].[users]";
     protected override List<T> Select<T>(DbConnection connection, Expression<Func<T, bool>>? predicate = null)
     {

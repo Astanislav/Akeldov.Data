@@ -1,6 +1,6 @@
 # Akeldov.Data.ClickHouse
 
-Reads mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
+Reads and inserts mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
 project reference to `Akeldov.Data.ClickHouse.csproj` and import
 `Akeldov.Data.ClickHouse`.
 
@@ -16,6 +16,9 @@ var all = connection.Select<User>();
 var minimum = 10;
 var matching = connection.Select<User>(row => row.Score >= minimum && row.Active);
 var asyncRows = await connection.SelectAsync<User>(row => row.Id == userId, cancellationToken);
+
+connection.Create<User>(new User { Id = Guid.NewGuid(), Name = "Alice", Active = true });
+await connection.CreateAsync(new User { Id = Guid.NewGuid(), Name = "Bob" }, cancellationToken);
 
 [Table("analytics", "users")]
 public class User
@@ -56,13 +59,21 @@ and ClickHouse's supported date range still apply.
 Binary and TimeSpan predicate values, method calls, arithmetic, narrowing casts,
 and non-finite floating-point values throw before execution. Reading other
 types is possible when the driver returns values compatible with the model.
-Use the SDK directly for inserts, aggregation, joins, sorting, paging, and
+Use the SDK directly for bulk inserts, aggregation, joins, sorting, paging, and
 ClickHouse-specific types or settings outside this mapped select API.
 
 The caller owns the connection. A select opens a closed connection and closes
 it after completion or failure; an already open connection remains open.
 Each select disposes its command and reader. The async API uses OpenAsync,
 ExecuteReaderAsync, and ReadAsync and passes cancellation throughout.
+
+`Create<T>(entity)` returns `void`; `CreateAsync<T>` returns `Task`. Each call
+inserts one row into an existing table using every property marked with `Column`.
+Properties must have public getters and setters. Values use the same typed
+parameters as predicates; null values become SQL `NULL`. Enums use their numeric
+values. Unmapped properties are omitted. Generated/default columns are not
+inferred and generated values are not returned. Create preserves connection
+ownership on success and failure; CreateAsync passes cancellation to the driver.
 
 Run local tests without a server:
 

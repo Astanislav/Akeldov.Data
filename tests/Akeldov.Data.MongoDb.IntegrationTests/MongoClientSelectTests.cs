@@ -81,6 +81,30 @@ public class MongoClientSelectTests
         Assert.That(client.Select<User>(), Has.Count.EqualTo(4));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_RoundTripsMappedDocument(bool asynchronous)
+    {
+        var entity = new CreatedRow { Id = Guid.NewGuid(), Name = "O'Brien\nОльга", Score = null };
+        if (asynchronous) await client.CreateAsync(entity);
+        else client.Create(entity);
+        var actual = client.Select<CreatedRow>(row => row.Id == entity.Id).Single();
+        Assert.That(actual.Name, Is.EqualTo(entity.Name));
+        Assert.That(actual.Score, Is.Null);
+        var document = await client.GetDatabase(DatabaseName).GetCollection<BsonDocument>("created_rows")
+            .Find(new BsonDocument("_id", new BsonBinaryData(entity.Id, GuidRepresentation.Standard))).SingleAsync();
+        Assert.That(document.Contains("Unmapped"), Is.False);
+    }
+
+    [Table(DatabaseName, "created_rows")]
+    public class CreatedRow
+    {
+        [Column("_id")] public Guid Id { get; set; }
+        [Column("name")] public string? Name { get; set; }
+        [Column("score")] public int? Score { get; set; }
+        public string Unmapped { get; set; } = "ignored";
+    }
+
     [Test]
     public async Task SelectAsync_UsesCapturedValuesAndBooleanFilters()
     {

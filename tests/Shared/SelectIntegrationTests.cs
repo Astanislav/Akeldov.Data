@@ -12,6 +12,7 @@ public abstract class SelectIntegrationTests
 {
     protected const string ParameterValue = "Robert'); DROP TABLE [integration].[users];--";
     protected abstract DbConnection CreateConnection();
+    protected abstract void Create<T>(DbConnection connection, T entity) where T : class, new();
     protected abstract List<T> Select<T>(DbConnection connection, Expression<Func<T, bool>>? predicate = null)
         where T : class, new();
     protected abstract Task ResetData();
@@ -20,6 +21,33 @@ public abstract class SelectIntegrationTests
 
     [SetUp]
     public Task RestoreData() => ResetData();
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_RoundTripsValuesAndPreservesConnection(bool initiallyOpen)
+    {
+        using var connection = CreateConnection();
+        if (initiallyOpen) connection.Open();
+        var entity = SeedRows()[0];
+        entity.Id = 100;
+        entity.Name = ParameterValue;
+        entity.Score = null;
+        Create(connection, entity);
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+        var actual = Select<User>(connection, row => row.Id == 100).Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual.Name, Is.EqualTo(entity.Name));
+            Assert.That(actual.Score, Is.Null);
+            Assert.That(actual.State, Is.EqualTo(entity.State));
+            Assert.That(actual.ExternalId, Is.EqualTo(entity.ExternalId));
+            Assert.That(actual.Created, Is.EqualTo(entity.Created));
+            Assert.That(actual.Payload, Is.EqualTo(entity.Payload));
+            Assert.That(Select<User>(connection), Has.Count.EqualTo(6));
+        });
+        Assert.Catch<DbException>(() => Create(connection, entity));
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+    }
 
     [Test]
     public void Select_ReadsAllRowsAndMappedTypes()

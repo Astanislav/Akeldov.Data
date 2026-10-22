@@ -1,6 +1,6 @@
 # Akeldov.Data.Kusto
 
-Reads mapped models from Azure Data Explorer / Kusto using the official
+Reads and inserts mapped models in Azure Data Explorer / Kusto using the official
 `Microsoft.Azure.Kusto.Data` SDK. Add a project reference to
 `Akeldov.Data.Kusto.csproj` and import `Akeldov.Data.Kusto`.
 
@@ -56,6 +56,28 @@ Dates are sent in UTC; `DateTime` values with `Kind.Unspecified` are treated as
 UTC. Kusto `datetime` results can populate `DateTimeOffset` properties with a
 zero offset. The async API passes cancellation to the SDK and checks it while
 mapping results; the SDK's `IDataReader` is read synchronously.
+
+For individual inserts, use a separate administration provider:
+
+```csharp
+using var admin = KustoClientFactory.CreateCslAdminProvider(connection);
+admin.Create<User>(new User { Id = 10, Name = "Alice", Active = true });
+await admin.CreateAsync(new User { Id = 11, Name = "Bob" }, cancellationToken);
+```
+
+`Create<T>(entity)` returns `void`; `CreateAsync<T>` returns `Task`. They use
+`.ingest inline` with JSON data and an explicit mapping by column name, so model
+property order need not match table column order. The table must already exist;
+only `Column` properties with public getters and setters are serialized. Supported
+types and range checks match the predicate types above. Null strings become
+empty strings in Kusto. The caller owns the administration provider; each call
+consumes and disposes its result reader. The SDK control-command API has no
+cancellation-token argument, so CreateAsync checks cancellation before sending
+but cannot cancel a command already in progress.
+
+Microsoft documents [inline ingestion](https://learn.microsoft.com/en-us/kusto/management/data-ingestion/ingest-inline)
+for exploration and prototyping, not production or high-volume ingestion. Use
+the Kusto ingestion SDK for those workloads.
 
 Run local tests without a cluster:
 

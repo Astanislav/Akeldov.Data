@@ -12,6 +12,32 @@ namespace Akeldov.Data.MongoDb.Tests;
 public class MongoClientExtensionsTests
 {
     [Test]
+    public async Task Create_InsertsMappedBsonWithNullsAndPassesCancellation()
+    {
+        var client = CreateClient(out var fake);
+        var entity = new User { Name = "O'Brien", Score = null };
+        client.Create(entity);
+        Assert.That(fake.Document!["name"].AsString, Is.EqualTo(entity.Name));
+        Assert.That(fake.Document["score"], Is.EqualTo(BsonNull.Value));
+        Assert.That(fake.Document.Contains("Unmapped"), Is.False);
+        using var cancellation = new CancellationTokenSource();
+        await client.CreateAsync(entity, cancellation.Token);
+        Assert.That(fake.Token, Is.EqualTo(cancellation.Token));
+        Assert.That(fake.Disposed, Is.False);
+    }
+
+    [Test]
+    public void Create_InvalidEntityAndCancellation_DoNotAccessDatabase()
+    {
+        var client = CreateClient(out var fake);
+        Assert.That(() => client.Create<User>(null!), Throws.ArgumentNullException);
+        Assert.That(() => client.Create(new MongoSelectQueryTests.Unmapped()), Throws.InvalidOperationException);
+        Assert.That(async () => await client.CreateAsync(new User(), new CancellationToken(true)),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(fake.DatabaseCalls, Is.Zero);
+    }
+
+    [Test]
     public void Select_MapsMultipleBatchesAndDisposesCursor()
     {
         var client = CreateClient(out var fake);
@@ -148,6 +174,7 @@ public class MongoClientExtensionsTests
         public string? DatabaseName { get; private set; }
         public string? CollectionName { get; private set; }
         public BsonDocument? Filter { get; private set; }
+        public BsonDocument? Document { get; private set; }
         public BsonDocument? Projection { get; private set; }
         public int DatabaseCalls { get; private set; }
         public int AsyncCalls { get; private set; }
@@ -180,6 +207,11 @@ public class MongoClientExtensionsTests
                         return Task.FromResult<IAsyncCursor<BsonDocument>>(root.Cursor);
                     }
                     return root.Cursor;
+                case "InsertOne":
+                case "InsertOneAsync":
+                    root.Document = (BsonDocument)args![0]!;
+                    root.Token = (CancellationToken)args[2]!;
+                    return targetMethod.Name == "InsertOneAsync" ? Task.CompletedTask : null;
                 case "Dispose":
                     root.Disposed = true;
                     return null;

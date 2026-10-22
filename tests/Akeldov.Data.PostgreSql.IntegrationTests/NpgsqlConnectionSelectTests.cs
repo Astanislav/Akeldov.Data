@@ -150,6 +150,8 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         var pgConnection = (NpgsqlConnection)connection;
         return predicate is null ? pgConnection.Select<T>() : pgConnection.Select(predicate);
     }
+
+    protected override void Create<T>(DbConnection connection, T entity) => ((NpgsqlConnection)connection).Create(entity);
     protected override void AssertQueryError(DbException exception)
         => Assert.That(((PostgresException)exception).SqlState, Is.EqualTo(PostgresErrorCodes.UndefinedTable));
 

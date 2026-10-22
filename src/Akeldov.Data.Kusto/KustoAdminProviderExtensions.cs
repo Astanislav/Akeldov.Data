@@ -1,0 +1,73 @@
+using System.Globalization;
+using System.Text.Json;
+using Kusto.Data.Common;
+
+namespace Akeldov.Data.Kusto;
+
+/// <summary>Inserts mapped models using a caller-owned Kusto administration client.</summary>
+public static class KustoAdminProviderExtensions
+{
+    /// <summary>Inserts one row using inline JSON ingestion and an explicit column mapping.</summary>
+    /// <remarks>Uses inline ingestion intended for exploration and prototyping. Kusto strings represent null as an empty string.</remarks>
+    public static void Create<T>(this ICslAdminProvider provider, T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(entity);
+        var (database, command) = CreateCommand(entity);
+        using var reader = provider.ExecuteControlCommand(database, command, new ClientRequestProperties());
+        while (reader.Read()) { }
+    }
+
+    /// <summary>Asynchronously inserts one mapped row.</summary>
+    /// <remarks>The SDK does not accept a cancellation token for control commands. Cancellation is checked before sending.</remarks>
+    public static async Task CreateAsync<T>(this ICslAdminProvider provider, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var (database, command) = CreateCommand(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var reader = await provider.ExecuteControlCommandAsync(database, command, new ClientRequestProperties())
+            .ConfigureAwait(false);
+        while (reader.Read()) { }
+    }
+
+    internal static (string Database, string Command) CreateCommand<T>(T entity) where T : class, new()
+    {
+        var mapping = TableMapping<T>.Create();
+        mapping.ValidateGetters();
+        var columns = mapping.Columns.ToArray();
+        var data = new Dictionary<string, object?>();
+        for (var index = 0; index < columns.Length; index++)
+        {
+            KqlParameter.GetScalarType(columns[index].Property.PropertyType);
+            var value = columns[index].Property.GetValue(entity);
+            if (value is not null)
+            {
+                // Reuse the supported scalar types and range checks from Select.
+                KqlParameter.Create(index, value);
+                if (value.GetType().IsEnum)
+                    value = Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType()), CultureInfo.InvariantCulture);
+                value = value switch
+                {
+                    DateTime date => date.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(date, DateTimeKind.Utc) : date.ToUniversalTime(),
+                    DateTimeOffset date => date.UtcDateTime,
+                    TimeSpan duration => duration.ToString("c", CultureInfo.InvariantCulture),
+                    _ => value
+                };
+            }
+            data.Add($"p{index}", value);
+        }
+
+        // Synthetic JSON keys avoid interpreting column names as JSON paths.
+        var ingestionMapping = JsonSerializer.Serialize(columns.Select((column, index) => new
+        {
+            column = column.Name,
+            Properties = new { Path = $"$.p{index}" }
+        }));
+        var command = $".ingest inline into table {KqlSyntax.QuoteIdentifier(mapping.Table.Name)} with (format='json', ingestionMapping={KqlSyntax.QuoteString(ingestionMapping)}) <|\n{JsonSerializer.Serialize(data)}";
+        return (mapping.Table.Schema, command);
+    }
+}

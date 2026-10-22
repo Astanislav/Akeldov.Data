@@ -23,7 +23,15 @@ internal sealed class TableMapping<T> where T : class, new()
 
     internal string CreateSelectSql(ISqlDialect dialect)
     {
-        var names = new HashSet<string>(dialect.ColumnNameComparer);
+        ValidateColumnNames(dialect.ColumnNameComparer);
+
+        var projection = string.Join(", ", columns.Select(column => dialect.QuoteIdentifier(column.Name)));
+        return $"SELECT {projection} FROM {dialect.QuoteIdentifier(Table.Schema)}.{dialect.QuoteIdentifier(Table.Name)}";
+    }
+
+    internal void ValidateColumnNames(StringComparer comparer)
+    {
+        var names = new HashSet<string>(comparer);
         foreach (var column in columns)
         {
             if (!names.Add(column.Name))
@@ -31,9 +39,17 @@ internal sealed class TableMapping<T> where T : class, new()
                 throw new InvalidOperationException($"Column '{column.Name}' is mapped more than once on '{typeof(T).FullName}'.");
             }
         }
+    }
 
-        var projection = string.Join(", ", columns.Select(column => dialect.QuoteIdentifier(column.Name)));
-        return $"SELECT {projection} FROM {dialect.QuoteIdentifier(Table.Schema)}.{dialect.QuoteIdentifier(Table.Name)}";
+    internal void ValidateGetters()
+    {
+        foreach (var column in columns)
+        {
+            if (column.Property.GetGetMethod() is null)
+            {
+                throw new InvalidOperationException($"Mapped property '{typeof(T).FullName}.{column.Property.Name}' must have a public getter to create a row.");
+            }
+        }
     }
 
     internal string GetColumnName(PropertyInfo property)

@@ -1,6 +1,6 @@
 # Akeldov.Data.MongoDb
 
-Reads mapped models with the official `MongoDB.Driver` SDK. Add a project
+Reads and inserts mapped models with the official `MongoDB.Driver` SDK. Add a project
 reference to `Akeldov.Data.MongoDb.csproj` and import `Akeldov.Data.MongoDb`.
 
 ```csharp
@@ -14,6 +14,9 @@ var all = client.Select<User>();
 var minimum = 10;
 var matching = client.Select<User>(row => row.Score >= minimum && row.Active);
 var asyncRows = await client.SelectAsync<User>(row => row.Name == "Alice", cancellationToken);
+
+client.Create<User>(new User { Id = ObjectId.GenerateNewId(), Name = "Alice" });
+await client.CreateAsync(new User { Id = ObjectId.GenerateNewId(), Name = "Bob" }, cancellationToken);
 
 [Table("analytics", "users")]
 public class User
@@ -53,7 +56,14 @@ see the driver's [query filter documentation](https://www.mongodb.com/docs/drive
 Column names must be top-level field names without dots, a leading `$`, or null
 characters. Nested member queries can use a mapped object property and the
 driver's serializers for that object's members. Use the SDK directly for
-writes, aggregation, sorting, paging, and legacy UUID handling.
+bulk writes, updates, deletes, aggregation, sorting, paging, and legacy UUID handling.
+
+`Create<T>(entity)` returns `void`; `CreateAsync<T>` returns `Task`. Both insert
+one document through the same local serializer, including only `Column` properties
+with public getters and setters. Null values become BSON null. A mapped `_id` is
+sent exactly as supplied, including default values; assign it before calling
+Create. Without a mapped `_id`, MongoDB generates one. Generated IDs are not
+written back to the entity. CreateAsync passes cancellation to `InsertOneAsync`.
 
 The caller owns and disposes the client. Each select disposes its cursor, also
 on mapping errors or cancellation. The async API passes cancellation to both
@@ -74,5 +84,6 @@ dotnet test tests/Akeldov.Data.MongoDb.IntegrationTests/Akeldov.Data.MongoDb.Int
 Alternatively, set `MONGODB_CONNECTION_STRING` to a test server. Integration
 tests replace data in the `users`, `guid_keys`, `string_keys`, `number_keys`, and
 `case_fields` collections of the dedicated `akeldov_data_integration` database.
+Create tests also insert documents into its `created_rows` collection.
 They cover sync/async execution, mapped projection, null and missing fields,
 field comparisons, case-sensitive names, cancellation, and several key types.

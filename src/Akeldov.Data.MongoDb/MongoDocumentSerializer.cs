@@ -6,7 +6,7 @@ using MongoDB.Bson.Serialization.Serializers;
 
 namespace Akeldov.Data.MongoDb;
 
-// This serializer is local to a select: it never changes the driver's global class maps.
+// This serializer is local to an operation: it never changes the driver's global class maps.
 internal sealed class MongoDocumentSerializer<T> : SerializerBase<T>, IBsonDocumentSerializer
     where T : class, new()
 {

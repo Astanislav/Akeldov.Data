@@ -3,10 +3,20 @@ using ClickHouse.Driver.ADO;
 
 namespace Akeldov.Data.ClickHouse;
 
-/// <summary>Reads mapped models from ClickHouse using the official ADO.NET driver.</summary>
-/// <remarks>Table.Schema specifies the database. Connections opened by a select are closed afterwards.</remarks>
+/// <summary>Reads and inserts mapped models using the official ClickHouse ADO.NET driver.</summary>
+/// <remarks>Table.Schema specifies the database. Connections opened by an operation are closed afterwards.</remarks>
 public static class ClickHouseConnectionExtensions
 {
+    /// <summary>Inserts one row using all properties marked with Column.</summary>
+    /// <remarks>Values are parameterized. Generated columns are not inferred or returned. Connections opened here are closed afterwards.</remarks>
+    public static void Create<T>(this ClickHouseConnection connection, T entity) where T : class, new()
+        => CreateExecutor.Create(connection, ClickHouseDialect.Instance, entity);
+
+    /// <summary>Asynchronously inserts one mapped row.</summary>
+    public static Task CreateAsync<T>(this ClickHouseConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => CreateExecutor.CreateAsync(connection, ClickHouseDialect.Instance, entity, cancellationToken);
+
     /// <summary>Reads all rows, populating properties marked with Column.</summary>
     public static List<T> Select<T>(this ClickHouseConnection connection) where T : class, new()
         => SelectExecutor.Select<T>(connection, ClickHouseDialect.Instance);

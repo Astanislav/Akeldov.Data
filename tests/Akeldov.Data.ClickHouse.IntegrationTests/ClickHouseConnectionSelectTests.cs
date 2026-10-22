@@ -40,6 +40,7 @@ public class ClickHouseConnectionSelectTests
                 ) ENGINE = MergeTree ORDER BY user_id
                 """, cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.empty_users (user_id Int32) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, "CREATE TABLE analytics.created_rows (id UUID, name Nullable(String), score Nullable(Int32), created DateTime64(7, 'UTC'), amount Decimal(18, 4)) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.`odd\\`table` (`odd\\`id` Int32) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "INSERT INTO analytics.`odd\\`table` VALUES (42)", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.case_rows (id Int32, ID Int32) ENGINE = Memory", cancellation.Token);
@@ -73,6 +74,32 @@ public class ClickHouseConnectionSelectTests
     public async Task StopDatabase()
     {
         if (container is not null) await container.DisposeAsync();
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_RoundTripsMappedValues(bool asynchronous)
+    {
+        using var connection = new ClickHouseConnection(connectionString);
+        var entity = new CreatedRow { Id = Guid.NewGuid(), Name = ParameterValue, Created = Created, Amount = 12.3456m };
+        if (asynchronous) await connection.CreateAsync(entity);
+        else connection.Create(entity);
+        Assert.That(connection.State, Is.EqualTo(ConnectionState.Closed));
+        var actual = connection.Select<CreatedRow>(row => row.Id == entity.Id).Single();
+        Assert.That(actual.Name, Is.EqualTo(entity.Name));
+        Assert.That(actual.Score, Is.Null);
+        Assert.That(actual.Created, Is.EqualTo(entity.Created));
+        Assert.That(actual.Amount, Is.EqualTo(entity.Amount));
+    }
+
+    [Table("analytics", "created_rows")]
+    public class CreatedRow
+    {
+        [Column("id")] public Guid Id { get; set; }
+        [Column("name")] public string? Name { get; set; }
+        [Column("score")] public int? Score { get; set; }
+        [Column("created")] public DateTime Created { get; set; }
+        [Column("amount")] public decimal Amount { get; set; }
     }
 
     [Test]

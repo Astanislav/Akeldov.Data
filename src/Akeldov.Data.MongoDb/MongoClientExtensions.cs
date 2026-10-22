@@ -1,13 +1,48 @@
 using System.Linq.Expressions;
 using MongoDB.Bson;
+using MongoDB.Bson.IO;
+using MongoDB.Bson.Serialization;
 using MongoDB.Driver;
 
 namespace Akeldov.Data.MongoDb;
 
-/// <summary>Reads mapped models from MongoDB collections.</summary>
+/// <summary>Reads and inserts mapped models in MongoDB collections.</summary>
 /// <remarks>Table.Schema specifies the database and Table.Name the collection. The caller owns the client.</remarks>
 public static class MongoClientExtensions
 {
+    /// <summary>Inserts one document using properties marked with Column.</summary>
+    /// <remarks>Mapped IDs are sent as supplied; generated IDs are not written back to the entity.</remarks>
+    public static void Create<T>(this IMongoClient client, T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(entity);
+        var (mapping, document) = CreateDocument(entity);
+        client.GetDatabase(mapping.Table.Schema).GetCollection<BsonDocument>(mapping.Table.Name).InsertOne(document);
+    }
+
+    /// <summary>Asynchronously inserts one mapped document.</summary>
+    public static async Task CreateAsync<T>(this IMongoClient client, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var (mapping, document) = CreateDocument(entity);
+        await client.GetDatabase(mapping.Table.Schema).GetCollection<BsonDocument>(mapping.Table.Name)
+            .InsertOneAsync(document, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private static (TableMapping<T> Mapping, BsonDocument Document) CreateDocument<T>(T entity) where T : class, new()
+    {
+        var mapping = TableMapping<T>.Create();
+        mapping.ValidateGetters();
+        var serializer = new MongoDocumentSerializer<T>(mapping);
+        var document = new BsonDocument();
+        using var writer = new BsonDocumentWriter(document);
+        serializer.Serialize(BsonSerializationContext.CreateRoot(writer), new BsonSerializationArgs { NominalType = typeof(T) }, entity);
+        return (mapping, document);
+    }
+
     /// <summary>Reads all documents, populating properties marked with Column.</summary>
     public static List<T> Select<T>(this IMongoClient client) where T : class, new()
         => Execute<T>(client);
