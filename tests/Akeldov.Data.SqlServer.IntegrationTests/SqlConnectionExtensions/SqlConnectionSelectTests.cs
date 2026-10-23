@@ -60,6 +60,12 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
                     [payload] varbinary(100) NULL
                 );
                 CREATE TABLE [integration].[odd]]table] ([odd]]id] int NOT NULL);
+                CREATE TABLE [integration].[customers] ([id] int NOT NULL PRIMARY KEY);
+                CREATE TABLE [integration].[orders]
+                (
+                    [id] int NOT NULL PRIMARY KEY,
+                    [customer_id] int NOT NULL REFERENCES [integration].[customers] ([id])
+                );
                 """);
         }
         catch
@@ -76,6 +82,8 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
         await connection.OpenAsync();
         using var command = connection.CreateCommand();
         command.CommandText = """
+            DELETE FROM [integration].[orders];
+            DELETE FROM [integration].[customers];
             TRUNCATE TABLE [integration].[users];
             TRUNCATE TABLE [integration].[odd]]table];
             INSERT INTO [integration].[odd]]table] ([odd]]id]) VALUES (42);
@@ -133,6 +141,44 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
     }
     protected override void AssertQueryError(DbException exception)
         => Assert.That(((SqlException)exception).Number, Is.EqualTo(208));
+
+    [Test]
+    public void Create_Reference_InsertsDependencyAndCopiesKey()
+    {
+        using var connection = new SqlConnection(connectionString);
+        var order = new Order { Id = 100, Customer = new Customer { Id = 42 } };
+        connection.Create(order);
+        Assert.That(order.CustomerId, Is.EqualTo(42));
+        Assert.That(connection.Select<Customer>().Single().Id, Is.EqualTo(42));
+        Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
+        Assert.That(connection.State, Is.EqualTo(ConnectionState.Closed));
+    }
+
+    [Test]
+    public void Create_OwnerInsertFailure_RollsBackDependency()
+    {
+        using var connection = new SqlConnection(connectionString);
+        connection.Create(new Order { Id = 100, Customer = new Customer { Id = 42 } });
+        var duplicate = new Order { Id = 100, CustomerId = 42, Customer = new Customer { Id = 43 } };
+        Assert.That(() => connection.Create(duplicate), Throws.TypeOf<SqlException>());
+        Assert.That(duplicate.CustomerId, Is.EqualTo(42));
+        Assert.That(connection.Select<Customer>().Select(row => row.Id), Is.EqualTo(new[] { 42 }));
+        Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
+    }
+
+    [Table("integration", "customers")]
+    public class Customer
+    {
+        [Key, Column("id")] public int Id { get; set; }
+    }
+
+    [Table("integration", "orders")]
+    public class Order
+    {
+        [Key, Column("id")] public int Id { get; set; }
+        [Column("customer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public int CustomerId { get; set; }
+        [Reference(nameof(CustomerId))] public Customer? Customer { get; set; }
+    }
 
     private async Task ExecuteSql(string sql)
     {

@@ -4,7 +4,9 @@ namespace Akeldov.Data;
 /// Marks a navigation property for an entity referenced by a foreign key on the same model.
 /// </summary>
 /// <remarks>
-/// Describes the relationship as metadata. It does not automatically load or save the referenced entity.
+/// SQL Server Create saves a non-null referenced entity first and copies its Key to the local ForeignKey.
+/// A null reference leaves the local foreign key value unchanged. Other providers treat this as metadata.
+/// This attribute does not automatically load the referenced entity.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
 public sealed class ReferenceAttribute : Attribute

@@ -5,10 +5,12 @@ namespace Akeldov.Data.SqlServer;
 
 public static class SqlConnectionExtensions
 {
-    /// <summary>Inserts one row using all properties marked with Column.</summary>
-    /// <remarks>Values are parameterized. Generated columns are not inferred or returned. Connections opened here are closed afterwards.</remarks>
+    /// <summary>Inserts a row and its Reference entities using properties marked with Column.</summary>
+    /// <remarks>References are inserted first and their Key values are copied to local ForeignKey properties.
+    /// Graphs are inserted in a transaction. Keys must be supplied by the caller; generated columns are not inferred or returned.
+    /// Connections opened here are closed afterwards.</remarks>
     public static void Create<T>(this SqlConnection connection, T entity) where T : class, new()
-        => CreateExecutor.Create(connection, SqlServerDialect.Instance, entity);
+        => SqlServerCreateExecutor.Create(connection, entity);
 
     /// <summary>Reads all rows from the mapped table.</summary>
     /// <remarks>A connection opened by this method is closed after reading.</remarks>
