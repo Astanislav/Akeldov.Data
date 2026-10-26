@@ -4,7 +4,7 @@ namespace Akeldov.Data;
 /// Marks a navigation property for an entity referenced by a foreign key on the same model.
 /// </summary>
 /// <remarks>
-/// SQL Server and PostgreSQL Create save a non-null referenced entity first and copy its Key to the local ForeignKey.
+/// SQL Server, PostgreSQL and Kusto Create save a non-null referenced entity first and copy its Key to the local ForeignKey.
 /// A null reference leaves the local foreign key value unchanged. Other providers treat this as metadata.
 /// This attribute does not automatically load the referenced entity.
 /// </remarks>

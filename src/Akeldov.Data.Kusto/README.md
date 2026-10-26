@@ -72,8 +72,51 @@ only `Column` properties with public getters and setters are serialized. Support
 types and range checks match the predicate types above. Null strings become
 empty strings in Kusto. The caller owns the administration provider; each call
 consumes and disposes its result reader. The SDK control-command API has no
-cancellation-token argument, so CreateAsync checks cancellation before sending
+cancellation-token argument, so CreateAsync checks cancellation before each command
 but cannot cancel a command already in progress.
+
+Both methods also save related entities marked with `Reference`:
+
+```csharp
+var order = new Order
+{
+    Id = 100,
+    Customer = new Customer { Id = 42 }
+};
+admin.Create(order); // Ingests Customer first; order.CustomerId becomes 42.
+// Alternatively: await admin.CreateAsync(order, cancellationToken);
+
+[Table("analytics", "customers")]
+public class Customer
+{
+    [Key, Column("id")] public int Id { get; set; }
+}
+
+[Table("analytics", "orders")]
+public class Order
+{
+    [Key, Column("id")] public int Id { get; set; }
+    [Column("customer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))]
+    public int CustomerId { get; set; }
+    [Reference(nameof(CustomerId))] public Customer? Customer { get; set; }
+}
+```
+
+- Supply keys before calling either method. A referenced key must have `Key` and
+  `Column` and must be non-null. The local foreign key must have `Column` and
+  `ForeignKey`; navigation properties must not have `Column`.
+- Non-null references are treated as new rows. Their keys replace the supplied
+  foreign keys. To use an existing row, leave the navigation null and supply its FK.
+- Nested references are ingested before their owners. A shared object instance is
+  ingested once per call; distinct instances with equal keys are separate inserts.
+- The complete graph, mappings and values are validated before sending any command.
+  Cycles and invalid relationships fail locally. Each entity uses its mapped database.
+- Commands execute sequentially without a graph-wide transaction. If ingestion
+  fails or cancellation stops the remaining commands, earlier inserts remain in
+  Kusto. Changed FK properties in memory are restored to their original values.
+  Retrying the entire graph can therefore duplicate previously ingested rows.
+- `Key` and `ForeignKey` describe relationships in the model; this API does not
+  create database constraints, generate keys, load navigations or save collections.
 
 Microsoft documents [inline ingestion](https://learn.microsoft.com/en-us/kusto/management/data-ingestion/ingest-inline)
 for exploration and prototyping, not production or high-volume ingestion. Use

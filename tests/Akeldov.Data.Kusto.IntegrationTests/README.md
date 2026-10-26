@@ -1,7 +1,7 @@
 # Kusto integration tests
 
-These tests execute the public `Select<T>` and `SelectAsync<T>` APIs through
-`Microsoft.Azure.Kusto.Data` against the Kusto query engine. Testcontainers
+These tests execute the public `Select<T>`, `SelectAsync<T>`, `Create<T>` and
+`CreateAsync<T>` APIs through `Microsoft.Azure.Kusto.Data` against the Kusto query engine. Testcontainers
 starts an isolated Linux container using
 `mcr.microsoft.com/azuredataexplorer/kustainer-linux:stable`, waits for its
 management endpoint, creates the test database, and ingests seed data with
@@ -28,10 +28,10 @@ dotnet test tests/Akeldov.Data.Kusto.IntegrationTests/Akeldov.Data.Kusto.Integra
 ```
 
 The fixture uses a random host port and stores its database inside the
-temporary container. It does not connect to an Azure cluster. Its tables are
-populated once and all test cases read them, so test order does not affect
-results. An unavailable Docker Engine is a setup failure, rather than a
-silently skipped integration run.
+temporary container. It does not connect to an Azure cluster. Tables used for
+select tests are populated once; create tests use unique GUIDs to isolate their
+rows, so test order does not affect results. An unavailable Docker Engine is a
+setup failure, rather than a silently skipped integration run.
 
 Coverage includes:
 
@@ -44,6 +44,8 @@ Coverage includes:
 - Quoted table/column identifiers and case-distinct column names.
 - `DateTimeOffset` mapping, captured values, and invariant parameter formatting.
 - Server errors, unsupported expressions, cancellation, and subsequent client reuse.
+- Sync/async creation with column-name mappings, shared references and existing foreign keys.
+- Partial ingestion on owner failure: earlier rows remain and in-memory foreign keys are restored.
 
 To run only local unit tests across the solution:
 

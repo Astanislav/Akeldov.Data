@@ -66,6 +66,10 @@ public class KustoQueryProviderSelectTests
             provider = KustoClientFactory.CreateCslQueryProvider(connection);
             await ExecuteCommand(admin, Database,
                 ".create table created_rows (name:string, id:guid, score:int, created:datetime, duration:timespan)", cancellation.Token);
+            await ExecuteCommand(admin, Database,
+                ".create table customers (id:guid)", cancellation.Token);
+            await ExecuteCommand(admin, Database,
+                ".create table orders (recipient_id:guid, id:guid, buyer_id:guid)", cancellation.Token);
         }
         catch
         {
@@ -94,6 +98,71 @@ public class KustoQueryProviderSelectTests
         Assert.That(actual.Score, Is.Null);
         Assert.That(actual.Created, Is.EqualTo(entity.Created));
         Assert.That(actual.Duration, Is.EqualTo(entity.Duration));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_SharedReference_InsertsCustomerOnceAndCopiesKeys(bool asynchronous)
+    {
+        using var admin = KustoClientFactory.CreateCslAdminProvider(new KustoConnectionStringBuilder(container!.GetConnectionString()));
+        var customer = new Customer { Id = Guid.NewGuid() };
+        var order = new Order { Id = Guid.NewGuid(), Buyer = customer, Recipient = customer };
+        if (asynchronous) await admin.CreateAsync(order);
+        else admin.Create(order);
+
+        Assert.That(Client.Select<Customer>(row => row.Id == customer.Id), Has.Count.EqualTo(1));
+        var actual = Client.Select<Order>(row => row.Id == order.Id).Single();
+        Assert.That(order.BuyerId, Is.EqualTo(customer.Id));
+        Assert.That(order.RecipientId, Is.EqualTo(customer.Id));
+        Assert.That(actual.BuyerId, Is.EqualTo(customer.Id));
+        Assert.That(actual.RecipientId, Is.EqualTo(customer.Id));
+
+        // A null navigation uses an existing row without ingesting it again.
+        var existing = new Order { Id = Guid.NewGuid(), BuyerId = customer.Id, RecipientId = customer.Id };
+        if (asynchronous) await admin.CreateAsync(existing);
+        else admin.Create(existing);
+        Assert.That(Client.Select<Customer>(row => row.Id == customer.Id), Has.Count.EqualTo(1));
+        Assert.That(Client.Select<Order>(row => row.Id == existing.Id).Single().BuyerId, Is.EqualTo(customer.Id));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_OwnerFailure_LeavesIngestedCustomerAndRestoresForeignKey(bool asynchronous)
+    {
+        using var admin = KustoClientFactory.CreateCslAdminProvider(new KustoConnectionStringBuilder(container!.GetConnectionString()));
+        var originalKey = Guid.NewGuid();
+        var customer = new Customer { Id = Guid.NewGuid() };
+        var order = new MissingOrder { CustomerId = originalKey, Customer = customer };
+        Assert.That(async () =>
+        {
+            if (asynchronous) await admin.CreateAsync(order);
+            else admin.Create(order);
+        }, Throws.InstanceOf<KustoException>());
+        Assert.That(order.CustomerId, Is.EqualTo(originalKey));
+        Assert.That(Client.Select<Customer>(row => row.Id == customer.Id), Has.Count.EqualTo(1));
+    }
+
+    [Table(Database, "customers")]
+    public class Customer
+    {
+        [Key, Column("id")] public Guid Id { get; set; }
+    }
+
+    [Table(Database, "orders")]
+    public class Order
+    {
+        [Key, Column("id")] public Guid Id { get; set; }
+        [Column("buyer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid BuyerId { get; set; }
+        [Column("recipient_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid RecipientId { get; set; }
+        [Reference(nameof(BuyerId))] public Customer? Buyer { get; set; }
+        [Reference(nameof(RecipientId))] public Customer? Recipient { get; set; }
+    }
+
+    [Table(Database, "missing_orders")]
+    public class MissingOrder
+    {
+        [Column("customer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid CustomerId { get; set; }
+        [Reference(nameof(CustomerId))] public Customer? Customer { get; set; }
     }
 
     [Table(Database, "created_rows")]

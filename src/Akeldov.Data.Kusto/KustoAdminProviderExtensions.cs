@@ -7,30 +7,52 @@ namespace Akeldov.Data.Kusto;
 /// <summary>Inserts mapped models using a caller-owned Kusto administration client.</summary>
 public static class KustoAdminProviderExtensions
 {
-    /// <summary>Inserts one row using inline JSON ingestion and an explicit column mapping.</summary>
-    /// <remarks>Uses inline ingestion intended for exploration and prototyping. Kusto strings represent null as an empty string.</remarks>
+    /// <summary>Inserts a row and its Reference entities using inline JSON ingestion and explicit column mappings.</summary>
+    /// <remarks>References are inserted first and their caller-supplied Key values are copied to local ForeignKey properties.
+    /// Commands are not transactional: earlier inserts remain on failure, but changed foreign keys in memory are restored.
+    /// Uses inline ingestion intended for exploration and prototyping. Kusto strings represent null as an empty string.</remarks>
     public static void Create<T>(this ICslAdminProvider provider, T entity) where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(entity);
-        var (database, command) = CreateCommand(entity);
-        using var reader = provider.ExecuteControlCommand(database, command, new ClientRequestProperties());
-        while (reader.Read()) { }
+        var builder = new CommandBuilder();
+        using var graph = new CreateGraph(StringComparer.Ordinal, builder);
+        graph.Prepare(entity);
+        foreach (var (database, command) in builder.Commands)
+        {
+            using var reader = provider.ExecuteControlCommand(database, command, new ClientRequestProperties());
+            while (reader.Read()) { }
+        }
+        graph.Complete();
     }
 
-    /// <summary>Asynchronously inserts one mapped row.</summary>
-    /// <remarks>The SDK does not accept a cancellation token for control commands. Cancellation is checked before sending.</remarks>
+    /// <summary>Asynchronously inserts a row and its Reference entities, dependencies first.</summary>
+    /// <remarks>The SDK does not accept a cancellation token for control commands. Cancellation is checked before each command.
+    /// Commands are not transactional: earlier inserts remain on failure or cancellation, but changed foreign keys in memory are restored.</remarks>
     public static async Task CreateAsync<T>(this ICslAdminProvider provider, T entity,
         CancellationToken cancellationToken = default) where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(entity);
         cancellationToken.ThrowIfCancellationRequested();
-        var (database, command) = CreateCommand(entity);
-        cancellationToken.ThrowIfCancellationRequested();
-        using var reader = await provider.ExecuteControlCommandAsync(database, command, new ClientRequestProperties())
-            .ConfigureAwait(false);
-        while (reader.Read()) { }
+        var builder = new CommandBuilder();
+        using var graph = new CreateGraph(StringComparer.Ordinal, builder);
+        graph.Prepare(entity);
+        foreach (var (database, command) in builder.Commands)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var reader = await provider.ExecuteControlCommandAsync(database, command, new ClientRequestProperties())
+                .ConfigureAwait(false);
+            while (reader.Read()) { }
+        }
+        graph.Complete();
+    }
+
+    private sealed class CommandBuilder : ICreateGraphCommandBuilder
+    {
+        public List<(string Database, string Command)> Commands { get; } = [];
+
+        public void Add<T>(T entity) where T : class, new() => Commands.Add(CreateCommand(entity));
     }
 
     internal static (string Database, string Command) CreateCommand<T>(T entity) where T : class, new()
