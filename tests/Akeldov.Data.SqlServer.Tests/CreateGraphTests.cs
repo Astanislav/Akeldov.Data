@@ -17,7 +17,7 @@ public class CreateGraphTests
         var customer = new Customer { Id = 12, Region = new Region { Id = 7 } };
         var order = new Order { Id = 34, Buyer = customer, Recipient = customer };
 
-        SqlServerCreateExecutor.Create(connection, order);
+        CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, order);
 
         Assert.Multiple(() =>
         {
@@ -46,7 +46,7 @@ public class CreateGraphTests
     {
         using var connection = new FakeConnection();
         var customer = new Customer { Id = 12, RegionId = 7 };
-        SqlServerCreateExecutor.Create(connection, customer);
+        CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, customer);
         Assert.That(connection.Executed, Has.Count.EqualTo(1));
         Assert.That(connection.Executed[0].Values, Is.EqualTo(new object[] { 12, 7 }));
         Assert.That(connection.Transaction, Is.Null);
@@ -61,7 +61,7 @@ public class CreateGraphTests
         if (initiallyOpen) connection.Open();
         var customer = new Customer { Id = 12, RegionId = 90, Region = new Region { Id = 7 } };
         var order = new Order { BuyerId = 91, RecipientId = 92, Buyer = customer, Recipient = customer };
-        Assert.That(() => SqlServerCreateExecutor.Create(connection, order),
+        Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, order),
             Throws.InvalidOperationException.With.Message.EqualTo("insert failed"));
         Assert.Multiple(() =>
         {
@@ -84,7 +84,7 @@ public class CreateGraphTests
         var first = new RecursiveRow { Id = 1 };
         var second = new RecursiveRow { Id = 2, Next = first };
         first.Next = second;
-        Assert.That(() => SqlServerCreateExecutor.Create(connection, first),
+        Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, first),
             Throws.InvalidOperationException.With.Message.Contains("Cyclic Reference"));
         Assert.That(connection.Opens, Is.Zero);
         Assert.That(connection.Executed, Is.Empty);
@@ -96,15 +96,15 @@ public class CreateGraphTests
         using var connection = new FakeConnection();
         Assert.Multiple(() =>
         {
-            Assert.That(() => SqlServerCreateExecutor.Create(connection, new MissingForeignKey()),
+            Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new MissingForeignKey()),
                 Throws.InvalidOperationException.With.Message.Contains("Column and ForeignKey"));
-            Assert.That(() => SqlServerCreateExecutor.Create(connection, new MissingKey()),
+            Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new MissingKey()),
                 Throws.InvalidOperationException.With.Message.Contains("Key and Column"));
-            Assert.That(() => SqlServerCreateExecutor.Create(connection, new WrongKeyType()),
+            Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new WrongKeyType()),
                 Throws.InvalidOperationException.With.Message.Contains("incompatible foreign key and key types"));
-            Assert.That(() => SqlServerCreateExecutor.Create(connection, new UnreadableReference()),
+            Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new UnreadableReference()),
                 Throws.InvalidOperationException.With.Message.Contains("public getter"));
-            Assert.That(() => SqlServerCreateExecutor.Create(connection, new DuplicateReference()),
+            Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new DuplicateReference()),
                 Throws.InvalidOperationException.With.Message.Contains("already assigned"));
             Assert.That(connection.Opens, Is.Zero);
             Assert.That(connection.Executed, Is.Empty);
@@ -116,7 +116,7 @@ public class CreateGraphTests
     {
         using var connection = new FakeConnection();
         var row = new InvalidValue { RegionId = 99, Region = new Region { Id = 7 } };
-        Assert.That(() => SqlServerCreateExecutor.Create(connection, row), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, row), Throws.TypeOf<NotSupportedException>());
         Assert.That(row.RegionId, Is.EqualTo(99));
         Assert.That(connection.Commands, Has.Count.EqualTo(2));
         Assert.That(connection.Commands.All(command => command.WasDisposed), Is.True);
@@ -127,7 +127,7 @@ public class CreateGraphTests
     public void Create_DistinctInstancesWithSameKey_AreNotSilentlyMerged()
     {
         using var connection = new FakeConnection();
-        SqlServerCreateExecutor.Create(connection, new Order
+        CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new Order
         {
             Buyer = new Customer { Id = 12 }, Recipient = new Customer { Id = 12 }
         });
@@ -138,7 +138,7 @@ public class CreateGraphTests
     public void Create_NullReferencedKey_ThrowsBeforeOpeningConnection()
     {
         using var connection = new FakeConnection();
-        Assert.That(() => SqlServerCreateExecutor.Create(connection, new NullableReference { Child = new NullableKey() }),
+        Assert.That(() => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, new NullableReference { Child = new NullableKey() }),
             Throws.InvalidOperationException.With.Message.Contains("null referenced key"));
         Assert.That(connection.Opens, Is.Zero);
         Assert.That(connection.Commands.All(command => command.WasDisposed), Is.True);

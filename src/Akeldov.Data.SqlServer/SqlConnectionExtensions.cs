@@ -10,7 +10,7 @@ public static class SqlConnectionExtensions
     /// Graphs are inserted in a transaction. Keys must be supplied by the caller; generated columns are not inferred or returned.
     /// Connections opened here are closed afterwards.</remarks>
     public static void Create<T>(this SqlConnection connection, T entity) where T : class, new()
-        => SqlServerCreateExecutor.Create(connection, entity);
+        => CreateGraphExecutor.Create(connection, SqlServerDialect.Instance, entity);
 
     /// <summary>Reads all rows from the mapped table.</summary>
     /// <remarks>A connection opened by this method is closed after reading.</remarks>

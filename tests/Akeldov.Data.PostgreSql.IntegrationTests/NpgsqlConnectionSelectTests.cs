@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using System.Linq.Expressions;
 using Akeldov.Data.IntegrationTests;
@@ -47,6 +48,12 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
                 CREATE TABLE "integration"."CaseRows"
                     ("id" integer NOT NULL, "ID" integer NOT NULL, "text""column" text NOT NULL);
                 CREATE TABLE "integration"."utc_rows" ("created" timestamp with time zone NOT NULL);
+                CREATE TABLE "integration"."customers" ("id" integer NOT NULL PRIMARY KEY);
+                CREATE TABLE "integration"."orders"
+                (
+                    "id" integer NOT NULL PRIMARY KEY,
+                    "customer_id" integer NOT NULL REFERENCES "integration"."customers" ("id")
+                );
                 """);
         }
         catch
@@ -64,7 +71,8 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         using var command = connection.CreateCommand();
         command.CommandText = """
             TRUNCATE TABLE "integration"."users", "integration"."odd]table",
-                "integration"."CaseRows", "integration"."utc_rows";
+                "integration"."CaseRows", "integration"."utc_rows",
+                "integration"."orders", "integration"."customers";
             INSERT INTO "integration"."odd]table" ("odd]id") VALUES (42);
             INSERT INTO "integration"."CaseRows" ("id", "ID", "text""column") VALUES (1, 2, 'quoted');
             INSERT INTO "integration"."utc_rows" ("created") VALUES (TIMESTAMPTZ '2026-01-01 00:00:00+00');
@@ -143,6 +151,46 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         Assert.That(connection.State, Is.EqualTo(System.Data.ConnectionState.Open));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_Reference_InsertsDependencyAndCopiesKey(bool initiallyOpen)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        if (initiallyOpen) connection.Open();
+        var order = new Order { Id = 100, Customer = new Customer { Id = 42 } };
+        connection.Create(order);
+        Assert.That(order.CustomerId, Is.EqualTo(42));
+        Assert.That(connection.Select<Customer>().Single().Id, Is.EqualTo(42));
+        Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_OwnerInsertFailure_RollsBackDependency(bool initiallyOpen)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        if (initiallyOpen) connection.Open();
+        connection.Create(new Order { Id = 100, Customer = new Customer { Id = 42 } });
+        var duplicate = new Order { Id = 100, CustomerId = 42, Customer = new Customer { Id = 43 } };
+        Assert.That(() => connection.Create(duplicate), Throws.TypeOf<PostgresException>()
+            .With.Property(nameof(PostgresException.SqlState)).EqualTo(PostgresErrorCodes.UniqueViolation));
+        Assert.That(duplicate.CustomerId, Is.EqualTo(42));
+        Assert.That(connection.Select<Customer>().Select(row => row.Id), Is.EqualTo(new[] { 42 }));
+        Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+    }
+
+    [Test]
+    public void Create_NullReference_UsesExistingCustomer()
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        connection.Create(new Customer { Id = 42 });
+        connection.Create(new Order { Id = 100, CustomerId = 42 });
+        Assert.That(connection.Select<Customer>(), Has.Count.EqualTo(1));
+        Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
+    }
+
     protected override DbConnection CreateConnection() => new NpgsqlConnection(connectionString);
     protected override string TruncateUsersSql => """TRUNCATE TABLE "integration"."users" """;
     protected override List<T> Select<T>(DbConnection connection, Expression<Func<T, bool>>? predicate = null)
@@ -162,6 +210,20 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         await command.ExecuteNonQueryAsync();
+    }
+
+    [Table("integration", "customers")]
+    public class Customer
+    {
+        [Key, Column("id")] public int Id { get; set; }
+    }
+
+    [Table("integration", "orders")]
+    public class Order
+    {
+        [Key, Column("id")] public int Id { get; set; }
+        [Column("customer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public int CustomerId { get; set; }
+        [Reference(nameof(CustomerId))] public Customer? Customer { get; set; }
     }
 
     [Table("integration", "CaseRows")]

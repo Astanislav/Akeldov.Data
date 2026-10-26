@@ -54,4 +54,4 @@ public class Order
   foreign key properties changed by `Create` are restored. A connection opened by
   `Create` is closed afterwards; an already open connection stays open.
 - `Reference` describes a single entity reached through a local foreign key, not
-  a collection of children. This graph-saving behavior is currently SQL Server only.
+  a collection of children. This graph-saving behavior is supported by SQL Server and PostgreSQL.
