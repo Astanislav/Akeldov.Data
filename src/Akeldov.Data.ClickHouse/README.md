@@ -68,12 +68,58 @@ Each select disposes its command and reader. The async API uses OpenAsync,
 ExecuteReaderAsync, and ReadAsync and passes cancellation throughout.
 
 `Create<T>(entity)` returns `void`; `CreateAsync<T>` returns `Task`. Each call
-inserts one row into an existing table using every property marked with `Column`.
+inserts a row and its `Reference` entities into existing tables using every property marked with `Column`.
 Properties must have public getters and setters. Values use the same typed
 parameters as predicates; null values become SQL `NULL`. Enums use their numeric
 values. Unmapped properties are omitted. Generated/default columns are not
 inferred and generated values are not returned. Create preserves connection
 ownership on success and failure; CreateAsync passes cancellation to the driver.
+
+Both methods save related entities using `Key`, `ForeignKey` and `Reference`:
+
+```csharp
+var order = new Order
+{
+    Id = 100,
+    Customer = new Customer { Id = 42 }
+};
+connection.Create(order); // Inserts Customer first; order.CustomerId becomes 42.
+// Alternatively: await connection.CreateAsync(order, cancellationToken);
+
+[Table("analytics", "customers")]
+public class Customer
+{
+    [Key, Column("id")] public int Id { get; set; }
+}
+
+[Table("analytics", "orders")]
+public class Order
+{
+    [Key, Column("id")] public int Id { get; set; }
+    [Column("customer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))]
+    public int CustomerId { get; set; }
+    [Reference(nameof(CustomerId))] public Customer? Customer { get; set; }
+}
+```
+
+- Supply keys before calling either method. A referenced key must have `Key` and
+  `Column` and must be non-null. The local foreign key must have `Column` and
+  `ForeignKey`; navigation properties must not have `Column`.
+- Non-null references are treated as new rows. Their keys replace the supplied
+  foreign keys. To use an existing row, leave the navigation null and supply its FK.
+- Nested references are inserted before their owners. A shared object instance is
+  inserted once per call; distinct instances with equal keys are separate inserts.
+- The complete graph, mappings and parameter values are validated before opening
+  the connection or sending any command. Cycles and invalid relationships fail
+  locally. Each entity uses its mapped database and table.
+- Commands execute sequentially without a graph-wide transaction. On failure or
+  cancellation, earlier inserts remain in ClickHouse; changed FK properties in
+  memory are restored to their original values. Retrying the entire graph can
+  therefore duplicate previously inserted rows.
+- `CreateAsync` awaits each insert and checks cancellation before the next command.
+  Both methods preserve the connection's original open/closed state.
+- These attributes describe model relationships; this API does not create database
+  constraints, generate keys, load navigations or save collections.
 
 Run local tests without a server:
 
@@ -84,7 +130,9 @@ dotnet test tests/Akeldov.Data.ClickHouse.Tests/Akeldov.Data.ClickHouse.Tests.cs
 These tests use the real driver's HTTP transport, parameter rewriting, and
 RowBinaryWithNamesAndTypes decoder with an in-memory HTTP handler, as well as
 query construction tests. They cover typed bindings, projection, nullable
-mapping, connection ownership, reader disposal, errors, and cancellation.
+mapping, connection ownership, reader disposal, errors, and cancellation, as well
+as reference ordering, shared objects, FK propagation and restoration, graph
+validation, and cancellation during graph insertion.
 
 Run integration tests against an isolated Docker container (Linux containers):
 
@@ -95,4 +143,5 @@ dotnet test tests/Akeldov.Data.ClickHouse.IntegrationTests/Akeldov.Data.ClickHou
 Integration tests use `clickhouse/clickhouse-server:25.8` and check UUID,
 DateTime64 and decimal round trips, C# predicate results including nullable
 column comparisons, text parameters, identifier escaping, empty results, and
-connection state after successful and failed queries.
+connection state after successful and failed queries. Create tests also check
+nested/shared references and retained dependency rows after a later insert fails.

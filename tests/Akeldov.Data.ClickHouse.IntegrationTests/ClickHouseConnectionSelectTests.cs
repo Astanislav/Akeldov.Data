@@ -41,6 +41,9 @@ public class ClickHouseConnectionSelectTests
                 """, cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.empty_users (user_id Int32) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.created_rows (id UUID, name Nullable(String), score Nullable(Int32), created DateTime64(7, 'UTC'), amount Decimal(18, 4)) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, "CREATE TABLE analytics.regions (id UUID) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, "CREATE TABLE analytics.customers (id UUID, region_id Nullable(UUID)) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, "CREATE TABLE analytics.orders (id UUID, buyer_id UUID, recipient_id UUID) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.`odd\\`table` (`odd\\`id` Int32) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "INSERT INTO analytics.`odd\\`table` VALUES (42)", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.case_rows (id Int32, ID Int32) ENGINE = Memory", cancellation.Token);
@@ -90,6 +93,79 @@ public class ClickHouseConnectionSelectTests
         Assert.That(actual.Score, Is.Null);
         Assert.That(actual.Created, Is.EqualTo(entity.Created));
         Assert.That(actual.Amount, Is.EqualTo(entity.Amount));
+    }
+
+    [Test]
+    public async Task Create_RoundTripsNestedAndSharedReferences(
+        [Values] bool asynchronous, [Values] bool initiallyOpen)
+    {
+        using var connection = new ClickHouseConnection(connectionString);
+        if (initiallyOpen) connection.Open();
+        var region = new Region { Id = Guid.NewGuid() };
+        var customer = new Customer { Id = Guid.NewGuid(), Region = region };
+        var order = new Order { Id = Guid.NewGuid(), Buyer = customer, Recipient = customer };
+        if (asynchronous) await connection.CreateAsync(order);
+        else connection.Create(order);
+
+        Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
+        Assert.That(connection.Select<Region>(row => row.Id == region.Id), Has.Count.EqualTo(1));
+        var actualCustomer = connection.Select<Customer>(row => row.Id == customer.Id).Single();
+        var actualOrder = connection.Select<Order>(row => row.Id == order.Id).Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(actualCustomer.RegionId, Is.EqualTo(region.Id));
+            Assert.That(actualOrder.BuyerId, Is.EqualTo(customer.Id));
+            Assert.That(actualOrder.RecipientId, Is.EqualTo(customer.Id));
+            Assert.That(customer.RegionId, Is.EqualTo(region.Id));
+            Assert.That(order.BuyerId, Is.EqualTo(customer.Id));
+            Assert.That(order.RecipientId, Is.EqualTo(customer.Id));
+        });
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_LaterInsertFailure_PreservesDependencyAndRestoresForeignKey(bool asynchronous)
+    {
+        using var connection = new ClickHouseConnection(connectionString);
+        var originalId = Guid.NewGuid();
+        var region = new Region { Id = Guid.NewGuid() };
+        var owner = new MissingOwner { RegionId = originalId, Region = region };
+        if (asynchronous)
+            Assert.That(async () => await connection.CreateAsync(owner), Throws.Exception.With.Message.Contains("missing_owner"));
+        else
+            Assert.That(() => connection.Create(owner), Throws.Exception.With.Message.Contains("missing_owner"));
+
+        Assert.That(connection.State, Is.EqualTo(ConnectionState.Closed));
+        Assert.That(owner.RegionId, Is.EqualTo(originalId));
+        Assert.That(connection.Select<Region>(row => row.Id == region.Id), Has.Count.EqualTo(1));
+    }
+
+    [Table("analytics", "regions")]
+    public class Region { [Key, Column("id")] public Guid Id { get; set; } }
+
+    [Table("analytics", "customers")]
+    public class Customer
+    {
+        [Key, Column("id")] public Guid Id { get; set; }
+        [Column("region_id"), ForeignKey(typeof(Region), nameof(Region.Id))] public Guid? RegionId { get; set; }
+        [Reference(nameof(RegionId))] public Region? Region { get; set; }
+    }
+
+    [Table("analytics", "orders")]
+    public class Order
+    {
+        [Key, Column("id")] public Guid Id { get; set; }
+        [Column("buyer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid BuyerId { get; set; }
+        [Column("recipient_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid RecipientId { get; set; }
+        [Reference(nameof(BuyerId))] public Customer? Buyer { get; set; }
+        [Reference(nameof(RecipientId))] public Customer? Recipient { get; set; }
+    }
+
+    [Table("analytics", "missing_owner")]
+    public class MissingOwner
+    {
+        [Column("region_id"), ForeignKey(typeof(Region), nameof(Region.Id))] public Guid RegionId { get; set; }
+        [Reference(nameof(RegionId))] public Region? Region { get; set; }
     }
 
     [Table("analytics", "created_rows")]

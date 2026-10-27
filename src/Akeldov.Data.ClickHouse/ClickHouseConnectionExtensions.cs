@@ -1,3 +1,5 @@
+using System.Data;
+using System.Data.Common;
 using System.Linq.Expressions;
 using ClickHouse.Driver.ADO;
 
@@ -7,15 +9,69 @@ namespace Akeldov.Data.ClickHouse;
 /// <remarks>Table.Schema specifies the database. Connections opened by an operation are closed afterwards.</remarks>
 public static class ClickHouseConnectionExtensions
 {
-    /// <summary>Inserts one row using all properties marked with Column.</summary>
-    /// <remarks>Values are parameterized. Generated columns are not inferred or returned. Connections opened here are closed afterwards.</remarks>
+    /// <summary>Inserts a row and its Reference entities, dependencies first.</summary>
+    /// <remarks>Caller-supplied Key values are copied to local ForeignKey properties. Values are parameterized.
+    /// Commands are not transactional: earlier inserts remain on failure, but changed foreign keys in memory are restored.
+    /// Generated columns are not inferred or returned. Connections opened here are closed afterwards.</remarks>
     public static void Create<T>(this ClickHouseConnection connection, T entity) where T : class, new()
-        => CreateExecutor.Create(connection, ClickHouseDialect.Instance, entity);
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(entity);
+        var builder = new CommandBuilder(connection);
+        using var graph = new CreateGraph(ClickHouseDialect.Instance.ColumnNameComparer, builder);
+        var shouldClose = connection.State == ConnectionState.Closed;
+        try
+        {
+            graph.Prepare(entity);
+            if (shouldClose) connection.Open();
+            foreach (var command in builder.Commands) command.ExecuteNonQuery();
+            graph.Complete();
+        }
+        finally
+        {
+            foreach (var command in builder.Commands) command.Dispose();
+            if (shouldClose && connection.State != ConnectionState.Closed) connection.Close();
+        }
+    }
 
-    /// <summary>Asynchronously inserts one mapped row.</summary>
-    public static Task CreateAsync<T>(this ClickHouseConnection connection, T entity,
+    /// <summary>Asynchronously inserts a row and its Reference entities, dependencies first.</summary>
+    /// <remarks>Cancellation is passed to the driver and checked before each command.
+    /// Commands are not transactional: earlier inserts remain on failure or cancellation, but changed foreign keys in memory are restored.</remarks>
+    public static async Task CreateAsync<T>(this ClickHouseConnection connection, T entity,
         CancellationToken cancellationToken = default) where T : class, new()
-        => CreateExecutor.CreateAsync(connection, ClickHouseDialect.Instance, entity, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var builder = new CommandBuilder(connection);
+        using var graph = new CreateGraph(ClickHouseDialect.Instance.ColumnNameComparer, builder);
+        var shouldClose = connection.State == ConnectionState.Closed;
+        try
+        {
+            graph.Prepare(entity);
+            if (shouldClose) await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var command in builder.Commands)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            graph.Complete();
+        }
+        finally
+        {
+            foreach (var command in builder.Commands) await command.DisposeAsync().ConfigureAwait(false);
+            if (shouldClose && connection.State != ConnectionState.Closed)
+                await connection.CloseAsync().ConfigureAwait(false);
+        }
+    }
+
+    private sealed class CommandBuilder(ClickHouseConnection connection) : ICreateGraphCommandBuilder
+    {
+        public List<DbCommand> Commands { get; } = [];
+
+        public void Add<T>(T entity) where T : class, new()
+            => Commands.Add(CreateExecutor.CreateCommand(connection, ClickHouseDialect.Instance, entity));
+    }
 
     /// <summary>Reads all rows, populating properties marked with Column.</summary>
     public static List<T> Select<T>(this ClickHouseConnection connection) where T : class, new()
