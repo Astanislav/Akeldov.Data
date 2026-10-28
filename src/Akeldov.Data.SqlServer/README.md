@@ -62,3 +62,43 @@ public class Order
 - A graph containing only one row does not start an explicit transaction.
 - `Reference` describes a single entity reached through a local foreign key, not
   a collection of children.
+
+## Update
+
+`Update` and `UpdateAsync` update an existing row using its caller-supplied keys:
+
+```csharp
+connection.Update(new Customer { Id = 42, Name = "Updated name" });
+await connection.UpdateAsync(new Customer { Id = 42, Name = null }, cancellationToken);
+```
+
+- `Update` returns `void`; `UpdateAsync` returns `Task` and accepts an optional
+  `CancellationToken`.
+- Every `Key` must also have `Column` and a non-null value. Composite keys are
+  supported: all key columns are combined with `AND` in `WHERE`. Keys are never
+  written in `SET`; changing a primary key is outside this API.
+- Every non-key `Column` is updated, including null values. Unmapped properties
+  are ignored. This is a full mapped-row update, without change tracking or patch semantics.
+- `Reference` entities are not inserted or updated. Local FK values are sent as
+  supplied; a navigation's key does not override them. SQL Server enforces existing
+  database constraints.
+- Identifiers are quoted and values are parameterized. Missing/null keys, invalid
+  mappings and models with no non-key columns fail before opening the connection.
+- No matching row is not treated as an error; the method does not insert a row or
+  return the affected-row count. Generated values are not returned to the entity.
+- Each call executes one statement without starting an explicit transaction.
+  Connections opened by the method are closed on completion or failure; already
+  open connections remain open. Commands are disposed. The async method passes
+  cancellation to connection opening and execution.
+
+Run local tests without a server:
+
+```powershell
+dotnet test tests/Akeldov.Data.SqlServer.Tests/Akeldov.Data.SqlServer.Tests.csproj
+```
+
+Run integration tests with Docker using Linux containers:
+
+```powershell
+dotnet test tests/Akeldov.Data.SqlServer.IntegrationTests/Akeldov.Data.SqlServer.IntegrationTests.csproj
+```

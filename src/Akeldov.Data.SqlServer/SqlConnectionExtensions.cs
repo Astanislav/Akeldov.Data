@@ -20,6 +20,19 @@ public static class SqlConnectionExtensions
         CancellationToken cancellationToken = default) where T : class, new()
         => CreateGraphExecutor.CreateAsync(connection, SqlServerDialect.Instance, entity, cancellationToken);
 
+    /// <summary>Updates non-key Column properties using all Key properties as the row selector.</summary>
+    /// <remarks>Keys must be mapped and non-null. Reference entities are not updated; local foreign keys are sent as supplied.
+    /// No matching row is not treated as an error. Connections opened here are closed afterwards.</remarks>
+    public static void Update<T>(this SqlConnection connection, T entity) where T : class, new()
+        => UpdateExecutor.Update(connection, SqlServerDialect.Instance, entity);
+
+    /// <summary>Asynchronously updates mapped columns using all Key properties as the row selector.</summary>
+    /// <remarks>Uses the same mapping rules as Update. Cancellation is passed to the driver.
+    /// Connections opened here are closed afterwards.</remarks>
+    public static Task UpdateAsync<T>(this SqlConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => UpdateExecutor.UpdateAsync(connection, SqlServerDialect.Instance, entity, cancellationToken);
+
     /// <summary>Reads all rows from the mapped table.</summary>
     /// <remarks>A connection opened by this method is closed after reading.</remarks>
     public static List<T> Select<T>(this SqlConnection connection) where T : class, new()

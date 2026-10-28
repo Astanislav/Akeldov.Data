@@ -11,7 +11,7 @@ namespace Akeldov.Data.SqlServer.IntegrationTests;
 
 /// <summary>Requires Docker with Linux containers. The container owns the temporary database.</summary>
 [TestFixture]
-public class SqlConnectionSelectTests : SelectIntegrationTests
+public partial class SqlConnectionSelectTests : SelectIntegrationTests
 {
     private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
     private MsSqlContainer? container;
@@ -60,6 +60,18 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
                     [payload] varbinary(100) NULL
                 );
                 CREATE TABLE [integration].[odd]]table] ([odd]]id] int NOT NULL);
+                CREATE TABLE [integration].[update_rows]
+                (
+                    [id] int NOT NULL,
+                    [tenant_id] int NOT NULL,
+                    [name] nvarchar(200) NULL,
+                    [score] int NULL,
+                    [created] datetime2(7) NOT NULL,
+                    [amount] decimal(18, 4) NOT NULL,
+                    [external_id] uniqueidentifier NOT NULL,
+                    [payload] varbinary(100) NULL,
+                    PRIMARY KEY ([id], [tenant_id])
+                );
                 CREATE TABLE [integration].[customers] ([id] int NOT NULL PRIMARY KEY);
                 CREATE TABLE [integration].[orders]
                 (
@@ -85,6 +97,7 @@ public class SqlConnectionSelectTests : SelectIntegrationTests
             DELETE FROM [integration].[orders];
             DELETE FROM [integration].[customers];
             TRUNCATE TABLE [integration].[users];
+            TRUNCATE TABLE [integration].[update_rows];
             TRUNCATE TABLE [integration].[odd]]table];
             INSERT INTO [integration].[odd]]table] ([odd]]id]) VALUES (42);
             """;

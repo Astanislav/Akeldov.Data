@@ -13,8 +13,8 @@ providers. SQL identifiers and parameters are supplied by each provider's dialec
 - `UpdateAsync(connection, dialect, entity, cancellationToken)` executes it
   asynchronously and returns `Task`.
 
-Provider-specific public Update extensions are not connected yet. This is not a
-claim of Update support for SQL Server, PostgreSQL, ClickHouse, Kusto, or MongoDB.
+SQL Server exposes public `Update` and `UpdateAsync` extensions backed by this
+executor. PostgreSQL, ClickHouse, Kusto, and MongoDB are not connected yet.
 
 The target table comes from `Table`. Every public instance property marked with
 `Key` must also have `Column` and contain a non-null value. All keys participate in
