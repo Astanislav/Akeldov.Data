@@ -10,26 +10,52 @@ namespace Akeldov.Data.MongoDb;
 /// <remarks>Table.Schema specifies the database and Table.Name the collection. The caller owns the client.</remarks>
 public static class MongoClientExtensions
 {
-    /// <summary>Inserts one document using properties marked with Column.</summary>
-    /// <remarks>Mapped IDs are sent as supplied; generated IDs are not written back to the entity.</remarks>
+    /// <summary>Inserts a document and its Reference entities, dependencies first.</summary>
+    /// <remarks>Caller-supplied Key values are copied to local ForeignKey properties.
+    /// Inserts are not transactional: earlier documents remain on failure, but changed foreign keys in memory are restored.
+    /// Mapped IDs are sent as supplied; generated IDs are not written back to the entity.</remarks>
     public static void Create<T>(this IMongoClient client, T entity) where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(entity);
-        var (mapping, document) = CreateDocument(entity);
-        client.GetDatabase(mapping.Table.Schema).GetCollection<BsonDocument>(mapping.Table.Name).InsertOne(document);
+        var builder = new DocumentBuilder();
+        using var graph = new CreateGraph(StringComparer.Ordinal, builder);
+        graph.Prepare(entity);
+        foreach (var (database, collection, document) in builder.Documents)
+            client.GetDatabase(database).GetCollection<BsonDocument>(collection).InsertOne(document);
+        graph.Complete();
     }
 
-    /// <summary>Asynchronously inserts one mapped document.</summary>
+    /// <summary>Asynchronously inserts a document and its Reference entities, dependencies first.</summary>
+    /// <remarks>Cancellation is passed to the driver and checked before each insert.
+    /// Earlier documents remain on failure or cancellation, but changed foreign keys in memory are restored.</remarks>
     public static async Task CreateAsync<T>(this IMongoClient client, T entity,
         CancellationToken cancellationToken = default) where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(entity);
         cancellationToken.ThrowIfCancellationRequested();
-        var (mapping, document) = CreateDocument(entity);
-        await client.GetDatabase(mapping.Table.Schema).GetCollection<BsonDocument>(mapping.Table.Name)
-            .InsertOneAsync(document, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var builder = new DocumentBuilder();
+        using var graph = new CreateGraph(StringComparer.Ordinal, builder);
+        graph.Prepare(entity);
+        foreach (var (database, collection, document) in builder.Documents)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await client.GetDatabase(database).GetCollection<BsonDocument>(collection)
+                .InsertOneAsync(document, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        graph.Complete();
+    }
+
+    private sealed class DocumentBuilder : ICreateGraphCommandBuilder
+    {
+        public List<(string Database, string Collection, BsonDocument Document)> Documents { get; } = [];
+
+        public void Add<T>(T entity) where T : class, new()
+        {
+            var (mapping, document) = CreateDocument(entity);
+            Documents.Add((mapping.Table.Schema, mapping.Table.Name, document));
+        }
     }
 
     private static (TableMapping<T> Mapping, BsonDocument Document) CreateDocument<T>(T entity) where T : class, new()

@@ -96,6 +96,87 @@ public class MongoClientSelectTests
         Assert.That(document.Contains("Unmapped"), Is.False);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_RoundTripsNestedAndSharedReferences(bool asynchronous)
+    {
+        var region = new Region { Id = ObjectId.GenerateNewId() };
+        var customer = new Customer { Id = Guid.NewGuid(), Region = region };
+        var order = new Order { Id = Guid.NewGuid(), Buyer = customer, Recipient = customer };
+        if (asynchronous) await client.CreateAsync(order);
+        else client.Create(order);
+
+        Assert.That(client.Select<Region>(row => row.Id == region.Id), Has.Count.EqualTo(1));
+        var actualCustomer = client.Select<Customer>(row => row.Id == customer.Id).Single();
+        var actualOrder = client.Select<Order>(row => row.Id == order.Id).Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(actualCustomer.RegionId, Is.EqualTo(region.Id));
+            Assert.That(actualOrder.BuyerId, Is.EqualTo(customer.Id));
+            Assert.That(actualOrder.RecipientId, Is.EqualTo(customer.Id));
+            Assert.That(customer.RegionId, Is.EqualTo(region.Id));
+            Assert.That(order.BuyerId, Is.EqualTo(customer.Id));
+            Assert.That(order.RecipientId, Is.EqualTo(customer.Id));
+            Assert.That(actualOrder.Buyer, Is.Null);
+            Assert.That(actualOrder.Recipient, Is.Null);
+        });
+        var document = await client.GetDatabase(DatabaseName).GetCollection<BsonDocument>("created_orders")
+            .Find(new BsonDocument("_id", new BsonBinaryData(order.Id, GuidRepresentation.Standard))).SingleAsync();
+        Assert.That(document.Names, Is.EquivalentTo(new[] { "_id", "buyer_id", "recipient_id" }));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Create_DuplicateOwner_PreservesInsertedDependenciesAndRestoresForeignKeys(bool asynchronous)
+    {
+        var originalId = Guid.NewGuid();
+        var order = new Order { Id = Guid.NewGuid(), BuyerId = originalId, RecipientId = originalId };
+        client.Create(order);
+        var region = new Region { Id = ObjectId.GenerateNewId() };
+        var customer = new Customer { Id = Guid.NewGuid(), Region = region };
+        order.Buyer = customer;
+        order.Recipient = customer;
+
+        if (asynchronous)
+            Assert.That(async () => await client.CreateAsync(order), Throws.TypeOf<MongoWriteException>());
+        else
+            Assert.That(() => client.Create(order), Throws.TypeOf<MongoWriteException>());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(customer.RegionId, Is.Null);
+            Assert.That(order.BuyerId, Is.EqualTo(originalId));
+            Assert.That(order.RecipientId, Is.EqualTo(originalId));
+        });
+        Assert.That(client.Select<Region>(row => row.Id == region.Id), Has.Count.EqualTo(1));
+        var storedCustomer = client.Select<Customer>(row => row.Id == customer.Id).Single();
+        Assert.That(storedCustomer.RegionId, Is.EqualTo(region.Id));
+        var storedOrder = client.Select<Order>(row => row.Id == order.Id).Single();
+        Assert.That(storedOrder.BuyerId, Is.EqualTo(originalId));
+        Assert.That(storedOrder.RecipientId, Is.EqualTo(originalId));
+    }
+
+    [Table(DatabaseName, "created_regions")]
+    public class Region { [Key, Column("_id")] public ObjectId Id { get; set; } }
+
+    [Table(DatabaseName, "created_customers")]
+    public class Customer
+    {
+        [Key, Column("_id")] public Guid Id { get; set; }
+        [Column("region_id"), ForeignKey(typeof(Region), nameof(Region.Id))] public ObjectId? RegionId { get; set; }
+        [Reference(nameof(RegionId))] public Region? Region { get; set; }
+    }
+
+    [Table(DatabaseName, "created_orders")]
+    public class Order
+    {
+        [Key, Column("_id")] public Guid Id { get; set; }
+        [Column("buyer_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid BuyerId { get; set; }
+        [Column("recipient_id"), ForeignKey(typeof(Customer), nameof(Customer.Id))] public Guid? RecipientId { get; set; }
+        [Reference(nameof(BuyerId))] public Customer? Buyer { get; set; }
+        [Reference(nameof(RecipientId))] public Customer? Recipient { get; set; }
+    }
+
     [Table(DatabaseName, "created_rows")]
     public class CreatedRow
     {
