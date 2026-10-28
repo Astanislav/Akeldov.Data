@@ -6,7 +6,7 @@ using NUnit.Framework;
 namespace Akeldov.Data.PostgreSql.Tests;
 
 [TestFixture]
-public class CreateGraphTests
+public partial class CreateGraphTests
 {
     [TestCase(false)]
     [TestCase(true)]
@@ -263,6 +263,15 @@ public class CreateGraphTests
     {
         private ConnectionState state;
         public int FailAt { get; init; }
+        public bool FailOpen { get; init; }
+        public bool FailBegin { get; init; }
+        public bool FailCommit { get; init; }
+        public bool FailRollback { get; init; }
+        public CancellationToken OpenToken { get; private set; }
+        public CancellationToken BeginToken { get; private set; }
+        public bool ClosedAsync { get; private set; }
+        public Action? AfterExecute { get; set; }
+        public Func<CancellationToken, Task>? BeforeExecuteAsync { get; set; }
         public int Opens { get; private set; }
         public List<FakeCommand> Commands { get; } = [];
         public List<FakeCommand> Executed { get; } = [];
@@ -275,6 +284,27 @@ public class CreateGraphTests
         public override ConnectionState State => state;
         public override void Open() { Opens++; state = ConnectionState.Open; }
         public override void Close() => state = ConnectionState.Closed;
+        public override Task OpenAsync(CancellationToken cancellationToken)
+        {
+            OpenToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (FailOpen) return Task.FromException(new InvalidOperationException("open failed"));
+            Open();
+            return Task.CompletedTask;
+        }
+        public override Task CloseAsync()
+        {
+            ClosedAsync = true;
+            Close();
+            return Task.CompletedTask;
+        }
+        protected override ValueTask<DbTransaction> BeginDbTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken)
+        {
+            BeginToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (FailBegin) throw new InvalidOperationException("begin failed");
+            return ValueTask.FromResult(BeginDbTransaction(isolationLevel));
+        }
         public override void ChangeDatabase(string databaseName) => throw new NotSupportedException();
         protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
             => Transaction = new FakeTransaction(this);
@@ -288,6 +318,10 @@ public class CreateGraphTests
 
     private sealed class FakeTransaction(FakeConnection connection) : DbTransaction
     {
+        public CancellationToken CommitToken { get; private set; }
+        public CancellationToken RollbackToken { get; private set; }
+        public bool AsyncRollback { get; private set; }
+        public bool AsyncDisposed { get; private set; }
         public bool Committed { get; private set; }
         public bool RolledBack { get; private set; }
         public bool WasDisposed { get; private set; }
@@ -295,6 +329,29 @@ public class CreateGraphTests
         protected override DbConnection DbConnection => connection;
         public override void Commit() => Committed = true;
         public override void Rollback() => RolledBack = true;
+        public override Task CommitAsync(CancellationToken cancellationToken = default)
+        {
+            CommitToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (connection.FailCommit) return Task.FromException(new InvalidOperationException("commit failed"));
+            Commit();
+            return Task.CompletedTask;
+        }
+        public override Task RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            AsyncRollback = true;
+            RollbackToken = cancellationToken;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (connection.FailRollback) return Task.FromException(new InvalidOperationException("rollback failed"));
+            Rollback();
+            return Task.CompletedTask;
+        }
+        public override ValueTask DisposeAsync()
+        {
+            AsyncDisposed = true;
+            Dispose();
+            return ValueTask.CompletedTask;
+        }
         protected override void Dispose(bool disposing) { WasDisposed = true; base.Dispose(disposing); }
     }
 
@@ -303,6 +360,9 @@ public class CreateGraphTests
         private readonly NpgsqlCommand parameters = new();
         public bool WasDisposed { get; private set; }
         public object[] Values { get; private set; } = [];
+        public CancellationToken Token { get; private set; }
+        public bool AsyncExecuted { get; private set; }
+        public bool AsyncDisposed { get; private set; }
         [System.Diagnostics.CodeAnalysis.AllowNull]
         public override string CommandText { get; set; } = "";
         public override int CommandTimeout { get; set; }
@@ -324,6 +384,23 @@ public class CreateGraphTests
             return 1;
         }
         public override object? ExecuteScalar() => throw new NotSupportedException();
+        public override async Task<int> ExecuteNonQueryAsync(CancellationToken cancellationToken)
+        {
+            Token = cancellationToken;
+            AsyncExecuted = true;
+            cancellationToken.ThrowIfCancellationRequested();
+            if (connection.BeforeExecuteAsync is not null)
+                await connection.BeforeExecuteAsync(cancellationToken);
+            var result = ExecuteNonQuery();
+            connection.AfterExecute?.Invoke();
+            return result;
+        }
+        public override ValueTask DisposeAsync()
+        {
+            AsyncDisposed = true;
+            Dispose();
+            return ValueTask.CompletedTask;
+        }
         protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior) => throw new NotSupportedException();
         protected override DbParameter CreateDbParameter() => new NpgsqlParameter();
         protected override void Dispose(bool disposing)

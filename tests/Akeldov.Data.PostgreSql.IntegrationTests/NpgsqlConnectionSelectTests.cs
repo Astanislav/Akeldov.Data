@@ -151,29 +151,34 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         Assert.That(connection.State, Is.EqualTo(System.Data.ConnectionState.Open));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Create_Reference_InsertsDependencyAndCopiesKey(bool initiallyOpen)
+    [Test]
+    public async Task Create_Reference_InsertsDependencyAndCopiesKey(
+        [Values] bool initiallyOpen, [Values] bool asynchronous)
     {
         using var connection = new NpgsqlConnection(connectionString);
         if (initiallyOpen) connection.Open();
         var order = new Order { Id = 100, Customer = new Customer { Id = 42 } };
-        connection.Create(order);
+        if (asynchronous) await connection.CreateAsync(order);
+        else connection.Create(order);
         Assert.That(order.CustomerId, Is.EqualTo(42));
         Assert.That(connection.Select<Customer>().Single().Id, Is.EqualTo(42));
         Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
         Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Create_OwnerInsertFailure_RollsBackDependency(bool initiallyOpen)
+    [Test]
+    public void Create_OwnerInsertFailure_RollsBackDependency(
+        [Values] bool initiallyOpen, [Values] bool asynchronous)
     {
         using var connection = new NpgsqlConnection(connectionString);
         if (initiallyOpen) connection.Open();
         connection.Create(new Order { Id = 100, Customer = new Customer { Id = 42 } });
         var duplicate = new Order { Id = 100, CustomerId = 42, Customer = new Customer { Id = 43 } };
-        Assert.That(() => connection.Create(duplicate), Throws.TypeOf<PostgresException>()
+        Assert.That(async () =>
+        {
+            if (asynchronous) await connection.CreateAsync(duplicate);
+            else connection.Create(duplicate);
+        }, Throws.TypeOf<PostgresException>()
             .With.Property(nameof(PostgresException.SqlState)).EqualTo(PostgresErrorCodes.UniqueViolation));
         Assert.That(duplicate.CustomerId, Is.EqualTo(42));
         Assert.That(connection.Select<Customer>().Select(row => row.Id), Is.EqualTo(new[] { 42 }));
@@ -181,12 +186,21 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         Assert.That(connection.State, Is.EqualTo(initiallyOpen ? ConnectionState.Open : ConnectionState.Closed));
     }
 
-    [Test]
-    public void Create_NullReference_UsesExistingCustomer()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Create_NullReference_UsesExistingCustomer(bool asynchronous)
     {
         using var connection = new NpgsqlConnection(connectionString);
-        connection.Create(new Customer { Id = 42 });
-        connection.Create(new Order { Id = 100, CustomerId = 42 });
+        if (asynchronous)
+        {
+            await connection.CreateAsync(new Customer { Id = 42 });
+            await connection.CreateAsync(new Order { Id = 100, CustomerId = 42 });
+        }
+        else
+        {
+            connection.Create(new Customer { Id = 42 });
+            connection.Create(new Order { Id = 100, CustomerId = 42 });
+        }
         Assert.That(connection.Select<Customer>(), Has.Count.EqualTo(1));
         Assert.That(connection.Select<Order>().Single().CustomerId, Is.EqualTo(42));
     }

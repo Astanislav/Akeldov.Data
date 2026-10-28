@@ -1,6 +1,6 @@
 # SQL Server
 
-`Create` inserts mapped rows and recursively saves entities marked with `Reference`.
+`Create` and `CreateAsync` insert mapped rows and recursively save entities marked with `Reference`.
 The referenced entity is inserted first; its `Key` value is then copied into the
 local property named by `Reference`, which must have `Column` and `ForeignKey`.
 
@@ -16,6 +16,7 @@ var order = new Order
     Customer = new Customer { Id = 42, Name = "Alice" }
 };
 connection.Create(order); // Inserts Customer, then Order; order.CustomerId becomes 42.
+// Alternatively: await connection.CreateAsync(order, cancellationToken);
 
 [Table("dbo", "Customers")]
 public class Customer
@@ -41,7 +42,7 @@ public class Order
 }
 ```
 
-- Supply key values before calling `Create`. `Key` does not generate values or
+- Supply key values before calling either method. `Key` does not generate values or
   retrieve database-generated identities. Referenced keys must be non-null.
 - A non-null reference is treated as a new row, and its key replaces the supplied
   foreign key. To reference an existing row, supply only the foreign key and leave
@@ -50,8 +51,14 @@ public class Order
   point to it. Different instances with the same key remain separate inserts.
 - References can be nested. Cycles, invalid relationship metadata and unsupported
   mapped values fail before the connection is opened or any rows are inserted.
-- Multi-row graphs use one transaction. On failure, inserts are rolled back and
-  foreign key properties changed by `Create` are restored. A connection opened by
-  `Create` is closed afterwards; an already open connection stays open.
+- Multi-row graphs use one transaction. On failure or cancellation, rollback is
+  attempted and changed foreign key properties in memory are restored. A connection
+  opened by either method is closed afterwards; an already open connection stays open.
+- `CreateAsync` returns `Task` and accepts an optional `CancellationToken`. It uses
+  asynchronous connection, transaction, and command APIs, awaiting each dependency
+  before inserting its owner. Cancellation is checked before each insert and commit
+  and passed to the driver. Rollback uses an uncanceled token so cancellation does
+  not prevent cleanup; a rollback error does not replace the original operation error.
+- A graph containing only one row does not start an explicit transaction.
 - `Reference` describes a single entity reached through a local foreign key, not
-  a collection of children. This graph-saving behavior is supported by SQL Server and PostgreSQL.
+  a collection of children.
