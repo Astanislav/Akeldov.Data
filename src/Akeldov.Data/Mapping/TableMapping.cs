@@ -47,7 +47,7 @@ internal sealed class TableMapping<T> where T : class, new()
         {
             if (column.Property.GetGetMethod() is null)
             {
-                throw new InvalidOperationException($"Mapped property '{typeof(T).FullName}.{column.Property.Name}' must have a public getter to create a row.");
+                throw new InvalidOperationException($"Mapped property '{typeof(T).FullName}.{column.Property.Name}' must have a public getter to write a row.");
             }
         }
     }
