@@ -14,7 +14,8 @@ providers. SQL identifiers and parameters are supplied by each provider's dialec
   asynchronously and returns `Task`.
 
 SQL Server and PostgreSQL expose public `Update` and `UpdateAsync` extensions
-backed by this executor. ClickHouse, Kusto, and MongoDB are not connected yet.
+backed by this executor. Kusto exposes equivalent extensions using its native
+`.update table` management command. ClickHouse and MongoDB are not connected yet.
 
 The target table comes from `Table`. Every public instance property marked with
 `Key` must also have `Column` and contain a non-null value. All keys participate in

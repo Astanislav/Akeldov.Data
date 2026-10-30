@@ -13,7 +13,7 @@ namespace Akeldov.Data.Kusto.IntegrationTests;
 [TestFixture]
 [Category("Integration")]
 [NonParallelizable]
-public class KustoQueryProviderSelectTests
+public partial class KustoQueryProviderSelectTests
 {
     private const string Database = "integration";
     private const string EmulatorImage = "mcr.microsoft.com/azuredataexplorer/kustainer-linux:stable";
@@ -70,6 +70,8 @@ public class KustoQueryProviderSelectTests
                 ".create table customers (id:guid)", cancellation.Token);
             await ExecuteCommand(admin, Database,
                 ".create table orders (recipient_id:guid, id:guid, buyer_id:guid)", cancellation.Token);
+            await ExecuteCommand(admin, Database,
+                ".create table update_rows (id:guid, tenant_id:int, name:string, score:int, active:bool, created:datetime, extra:string)", cancellation.Token);
         }
         catch
         {

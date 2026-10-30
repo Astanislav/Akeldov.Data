@@ -1,7 +1,8 @@
 # Kusto integration tests
 
-These tests execute the public `Select<T>`, `SelectAsync<T>`, `Create<T>` and
-`CreateAsync<T>` APIs through `Microsoft.Azure.Kusto.Data` against the Kusto query engine. Testcontainers
+These tests execute the public `Select<T>`, `SelectAsync<T>`, `Create<T>`,
+`CreateAsync<T>`, `Update<T>` and `UpdateAsync<T>` APIs through
+`Microsoft.Azure.Kusto.Data` against the Kusto query engine. Testcontainers
 starts an isolated Linux container using
 `mcr.microsoft.com/azuredataexplorer/kustainer-linux:stable`, waits for its
 management endpoint, creates the test database, and ingests seed data with
@@ -46,6 +47,8 @@ Coverage includes:
 - Server errors, unsupported expressions, cancellation, and subsequent client reuse.
 - Sync/async creation with column-name mappings, shared references and existing foreign keys.
 - Partial ingestion on owner failure: earlier rows remain and in-memory foreign keys are restored.
+- Atomic sync/async updates with composite keys, null values, no-match behavior,
+  preservation of unmapped columns, and pre-cancellation.
 
 To run only local unit tests across the solution:
 

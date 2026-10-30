@@ -1,6 +1,6 @@
 # Akeldov.Data.Kusto
 
-Reads and inserts mapped models in Azure Data Explorer / Kusto using the official
+Reads, inserts, and updates mapped models in Azure Data Explorer / Kusto using the official
 `Microsoft.Azure.Kusto.Data` SDK. Add a project reference to
 `Akeldov.Data.Kusto.csproj` and import `Akeldov.Data.Kusto`.
 
@@ -22,7 +22,7 @@ var asyncRows = await client.SelectAsync<User>(row => row.Id >= minimum, cancell
 [Table("analytics", "users")]
 public class User
 {
-    [Column("user_id")] public int Id { get; set; }
+    [Key, Column("user_id")] public int Id { get; set; }
     [Column("name")] public string? Name { get; set; }
     [Column("active")] public bool Active { get; set; }
 }
@@ -121,6 +121,41 @@ public class Order
 Microsoft documents [inline ingestion](https://learn.microsoft.com/en-us/kusto/management/data-ingestion/ingest-inline)
 for exploration and prototyping, not production or high-volume ingestion. Use
 the Kusto ingestion SDK for those workloads.
+
+## Update
+
+`Update` and `UpdateAsync` are extensions on `ICslAdminProvider`. They atomically
+replace rows matching the caller-supplied keys using Kusto's native `.update table`
+management command:
+
+```csharp
+admin.Update(new User { Id = 42, Name = "Updated name" });
+await admin.UpdateAsync(new User { Id = 42, Name = null }, cancellationToken);
+```
+
+- Every `Key` must also have `Column` and a non-null value. Composite keys are
+  supported; all keys are joined with `and`. Key columns are never changed.
+- Every mapped non-key `Column` is replaced, including null values. Kusto strings
+  represent null as an empty string. Unmapped model properties are ignored, while
+  columns present in the Kusto table but absent from the model retain their values.
+- All rows matching the keys are updated. No matching row is a no-op: these methods
+  do not perform an upsert or report an affected-row count.
+- `Reference` entities are not inserted or updated. Mapped local foreign keys are
+  written exactly as supplied, and navigation keys do not replace them.
+- Values are emitted as escaped, typed KQL scalar literals. Invalid mappings,
+  missing/null keys, unsupported values, and models without non-key columns fail
+  before a command is sent.
+- Kusto performs each `.update table` command atomically by deleting the matching
+  records and appending their updated versions. The operation requires Table Admin
+  permission and is unrecoverable; it also triggers applicable update policies.
+- The caller owns the provider. Result readers are consumed and disposed. The SDK
+  control-command API does not accept a cancellation token, so `UpdateAsync` checks
+  cancellation before sending but cannot cancel a command already in progress.
+
+Kusto recommends avoiding many concurrent `.update` commands because each update
+performs ingestion work. See the official
+[`.update table` documentation](https://learn.microsoft.com/en-us/kusto/management/update-table-command)
+for limits, permissions, and operational guidance.
 
 Run local tests without a cluster:
 
