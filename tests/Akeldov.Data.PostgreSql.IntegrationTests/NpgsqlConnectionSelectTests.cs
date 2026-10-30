@@ -11,7 +11,7 @@ namespace Akeldov.Data.PostgreSql.IntegrationTests;
 
 /// <summary>Requires Docker with Linux containers. The container owns the temporary database.</summary>
 [TestFixture]
-public class NpgsqlConnectionSelectTests : SelectIntegrationTests
+public partial class NpgsqlConnectionSelectTests : SelectIntegrationTests
 {
     private PostgreSqlContainer? container;
     private string connectionString = null!;
@@ -48,6 +48,18 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
                 CREATE TABLE "integration"."CaseRows"
                     ("id" integer NOT NULL, "ID" integer NOT NULL, "text""column" text NOT NULL);
                 CREATE TABLE "integration"."utc_rows" ("created" timestamp with time zone NOT NULL);
+                CREATE TABLE "integration"."update_rows"
+                (
+                    "id" integer NOT NULL,
+                    "tenant_id" integer NOT NULL,
+                    "name" text NULL,
+                    "score" integer NULL,
+                    "created" timestamp without time zone NOT NULL,
+                    "amount" numeric(18, 4) NOT NULL,
+                    "external_id" uuid NOT NULL,
+                    "payload" bytea NULL,
+                    PRIMARY KEY ("id", "tenant_id")
+                );
                 CREATE TABLE "integration"."customers" ("id" integer NOT NULL PRIMARY KEY);
                 CREATE TABLE "integration"."orders"
                 (
@@ -72,6 +84,7 @@ public class NpgsqlConnectionSelectTests : SelectIntegrationTests
         command.CommandText = """
             TRUNCATE TABLE "integration"."users", "integration"."odd]table",
                 "integration"."CaseRows", "integration"."utc_rows",
+                "integration"."update_rows",
                 "integration"."orders", "integration"."customers";
             INSERT INTO "integration"."odd]table" ("odd]id") VALUES (42);
             INSERT INTO "integration"."CaseRows" ("id", "ID", "text""column") VALUES (1, 2, 'quoted');

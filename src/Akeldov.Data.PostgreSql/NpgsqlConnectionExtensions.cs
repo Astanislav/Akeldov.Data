@@ -20,6 +20,19 @@ public static class NpgsqlConnectionExtensions
         CancellationToken cancellationToken = default) where T : class, new()
         => CreateGraphExecutor.CreateAsync(connection, PostgreSqlDialect.Instance, entity, cancellationToken);
 
+    /// <summary>Updates non-key Column properties using all Key properties as the row selector.</summary>
+    /// <remarks>Keys must be mapped and non-null. Reference entities are not updated; local foreign keys are sent as supplied.
+    /// No matching row is not treated as an error. Connections opened here are closed afterwards.</remarks>
+    public static void Update<T>(this NpgsqlConnection connection, T entity) where T : class, new()
+        => UpdateExecutor.Update(connection, PostgreSqlDialect.Instance, entity);
+
+    /// <summary>Asynchronously updates mapped columns using all Key properties as the row selector.</summary>
+    /// <remarks>Uses the same mapping rules as Update. Cancellation is passed to the driver.
+    /// Connections opened here are closed afterwards.</remarks>
+    public static Task UpdateAsync<T>(this NpgsqlConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => UpdateExecutor.UpdateAsync(connection, PostgreSqlDialect.Instance, entity, cancellationToken);
+
     /// <summary>
     /// Reads all rows from the table mapped to T, populating properties marked with Column.
     /// </summary>
