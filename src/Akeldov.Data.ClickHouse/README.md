@@ -1,6 +1,6 @@
 # Akeldov.Data.ClickHouse
 
-Reads and inserts mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
+Reads, inserts, and updates mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
 project reference to `Akeldov.Data.ClickHouse.csproj` and import
 `Akeldov.Data.ClickHouse`.
 
@@ -19,11 +19,13 @@ var asyncRows = await connection.SelectAsync<User>(row => row.Id == userId, canc
 
 connection.Create<User>(new User { Id = Guid.NewGuid(), Name = "Alice", Active = true });
 await connection.CreateAsync(new User { Id = Guid.NewGuid(), Name = "Bob" }, cancellationToken);
+connection.Update(new User { Id = userId, Name = "Updated", Active = true });
+await connection.UpdateAsync(new User { Id = userId, Name = null }, cancellationToken);
 
 [Table("analytics", "users")]
 public class User
 {
-    [Column("user_id")] public Guid Id { get; set; }
+    [Key, Column("user_id")] public Guid Id { get; set; }
     [Column("name")] public string? Name { get; set; }
     [Column("score")] public int? Score { get; set; }
     [Column("is_active")] public bool Active { get; set; }
@@ -121,6 +123,40 @@ public class Order
 - These attributes describe model relationships; this API does not create database
   constraints, generate keys, load navigations or save collections.
 
+## Update
+
+`Update` and `UpdateAsync` update every row matching the caller-supplied keys using
+ClickHouse's `ALTER TABLE ... UPDATE` mutation syntax.
+
+- Every `Key` must also have `Column` and a non-null value. Composite keys are
+  supported: all key columns are combined with `AND`. Keys are never assigned in
+  the mutation; changing a key is outside this API.
+- Every non-key `Column` is updated, including null values. This is a full mapped-row
+  update without change tracking or patch semantics. Unmapped properties and table
+  columns absent from the model are left unchanged.
+- `Reference` entities are not inserted or updated. Local foreign-key columns are
+  sent exactly as supplied; navigation keys do not replace them.
+- Values use native typed driver parameters and identifiers are quoted. Missing or
+  null keys, invalid mappings, unsupported values, and models without a non-key
+  column fail before opening the connection.
+- No matching row is a no-op. The methods do not insert a row or return an affected-row
+  count. Every row matching the supplied keys is updated.
+- Mutations are asynchronous in ClickHouse by default. These methods append
+  `SETTINGS mutations_sync = 1`, so they wait for completion on the current server
+  before returning. On replicated tables this does not wait for every replica.
+- `ALTER TABLE ... UPDATE` is a heavyweight mutation that rewrites affected data
+  parts. It is intended for relatively infrequent changes on engines that support
+  mutations, such as the MergeTree family. ClickHouse may reject updates to sorting,
+  partitioning, or other protected columns according to the table definition.
+- The caller owns the connection. A connection opened by the method is closed after
+  completion or failure; an already open connection remains open. `UpdateAsync`
+  passes cancellation to opening and execution. If the server has already accepted
+  a mutation, canceling the client request does not guarantee that server work stops.
+
+See ClickHouse's guidance on
+[mutation-based updates](https://clickhouse.com/blog/handling-updates-and-deletes-in-clickhouse)
+for performance considerations and alternatives for frequent updates.
+
 Run local tests without a server:
 
 ```powershell
@@ -133,6 +169,8 @@ query construction tests. They cover typed bindings, projection, nullable
 mapping, connection ownership, reader disposal, errors, and cancellation, as well
 as reference ordering, shared objects, FK propagation and restoration, graph
 validation, and cancellation during graph insertion.
+Update tests cover composite keys, synchronous mutation settings, typed parameters,
+mapping validation, connection ownership, server errors, and cancellation.
 
 Run integration tests against an isolated Docker container (Linux containers):
 
@@ -145,3 +183,5 @@ DateTime64 and decimal round trips, C# predicate results including nullable
 column comparisons, text parameters, identifier escaping, empty results, and
 connection state after successful and failed queries. Create tests also check
 nested/shared references and retained dependency rows after a later insert fails.
+Update tests check composite-key matching, null values, preservation of unmapped
+table columns, no-match behavior, synchronous visibility, and cancellation.

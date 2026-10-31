@@ -5,7 +5,7 @@ using ClickHouse.Driver.ADO;
 
 namespace Akeldov.Data.ClickHouse;
 
-/// <summary>Reads and inserts mapped models using the official ClickHouse ADO.NET driver.</summary>
+/// <summary>Reads, inserts, and updates mapped models using the official ClickHouse ADO.NET driver.</summary>
 /// <remarks>Table.Schema specifies the database. Connections opened by an operation are closed afterwards.</remarks>
 public static class ClickHouseConnectionExtensions
 {
@@ -64,6 +64,19 @@ public static class ClickHouseConnectionExtensions
                 await connection.CloseAsync().ConfigureAwait(false);
         }
     }
+
+    /// <summary>Updates non-key Column properties on rows matching all Key properties.</summary>
+    /// <remarks>Uses a synchronous ClickHouse mutation. Keys must be mapped and non-null. Reference entities are not updated.
+    /// No matching row is not treated as an error. Connections opened here are closed afterwards.</remarks>
+    public static void Update<T>(this ClickHouseConnection connection, T entity) where T : class, new()
+        => ClickHouseUpdateExecutor.Update(connection, entity);
+
+    /// <summary>Asynchronously updates mapped columns on rows matching all Key properties.</summary>
+    /// <remarks>Uses the same mapping rules as Update and passes cancellation to the driver.
+    /// The mutation is awaited before returning. Connections opened here are closed afterwards.</remarks>
+    public static Task UpdateAsync<T>(this ClickHouseConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => ClickHouseUpdateExecutor.UpdateAsync(connection, entity, cancellationToken);
 
     private sealed class CommandBuilder(ClickHouseConnection connection) : ICreateGraphCommandBuilder
     {

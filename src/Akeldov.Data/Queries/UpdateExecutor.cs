@@ -47,10 +47,16 @@ internal static class UpdateExecutor
 
     internal static DbCommand CreateCommand<T>(DbConnection connection, ISqlDialect dialect, T entity)
         where T : class, new()
+        => CreateCommand(connection, dialect, entity,
+            static (table, assignments, predicate) => $"UPDATE {table} SET {assignments} WHERE {predicate}");
+
+    internal static DbCommand CreateCommand<T>(DbConnection connection, ISqlDialect dialect, T entity,
+        Func<string, string, string, string> createStatement) where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(dialect);
         ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(createStatement);
         var mapping = TableMapping<T>.Create();
         mapping.ValidateColumnNames(dialect.ColumnNameComparer);
         mapping.ValidateGetters();
@@ -79,7 +85,8 @@ internal static class UpdateExecutor
                 $"{dialect.QuoteIdentifier(column.Name)} = {AddValue(command, dialect, column.Property.GetValue(entity))}").ToArray();
             var where = keys.Select((key, index) =>
                 $"{dialect.QuoteIdentifier(key.Name)} = {AddValue(command, dialect, keyValues[index])}").ToArray();
-            command.CommandText = $"UPDATE {dialect.QuoteIdentifier(mapping.Table.Schema)}.{dialect.QuoteIdentifier(mapping.Table.Name)} SET {string.Join(", ", set)} WHERE {string.Join(" AND ", where)}";
+            var table = $"{dialect.QuoteIdentifier(mapping.Table.Schema)}.{dialect.QuoteIdentifier(mapping.Table.Name)}";
+            command.CommandText = createStatement(table, string.Join(", ", set), string.Join(" AND ", where));
             return command;
         }
         catch

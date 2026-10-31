@@ -12,7 +12,7 @@ namespace Akeldov.Data.ClickHouse.IntegrationTests;
 [TestFixture]
 [Category("Integration")]
 [NonParallelizable]
-public class ClickHouseConnectionSelectTests
+public partial class ClickHouseConnectionSelectTests
 {
     private ClickHouseContainer? container;
     private string connectionString = null!;
@@ -44,6 +44,13 @@ public class ClickHouseConnectionSelectTests
             await Execute(connection, "CREATE TABLE analytics.regions (id UUID) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.customers (id UUID, region_id Nullable(UUID)) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.orders (id UUID, buyer_id UUID, recipient_id UUID) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, """
+                CREATE TABLE analytics.update_rows
+                (
+                    id UUID, tenant_id Int32, name Nullable(String), score Nullable(Int32), active Bool,
+                    created DateTime64(7, 'UTC'), amount Decimal(18, 4), extra String
+                ) ENGINE = MergeTree ORDER BY (id, tenant_id)
+                """, cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.`odd\\`table` (`odd\\`id` Int32) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "INSERT INTO analytics.`odd\\`table` VALUES (42)", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.case_rows (id Int32, ID Int32) ENGINE = Memory", cancellation.Token);
