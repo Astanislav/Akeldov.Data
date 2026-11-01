@@ -8,7 +8,7 @@ namespace Akeldov.Data.MongoDb.IntegrationTests;
 
 /// <summary>Requires Docker with Linux containers, or MONGODB_CONNECTION_STRING.</summary>
 [TestFixture]
-public class MongoClientSelectTests
+public partial class MongoClientSelectTests
 {
     private MongoDbContainer? container;
     private MongoClient client = null!;

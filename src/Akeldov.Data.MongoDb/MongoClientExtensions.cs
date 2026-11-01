@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Reflection;
 using MongoDB.Bson;
 using MongoDB.Bson.IO;
 using MongoDB.Bson.Serialization;
@@ -6,7 +7,7 @@ using MongoDB.Driver;
 
 namespace Akeldov.Data.MongoDb;
 
-/// <summary>Reads and inserts mapped models in MongoDB collections.</summary>
+/// <summary>Reads, inserts, and updates mapped models in MongoDB collections.</summary>
 /// <remarks>Table.Schema specifies the database and Table.Name the collection. The caller owns the client.</remarks>
 public static class MongoClientExtensions
 {
@@ -47,6 +48,32 @@ public static class MongoClientExtensions
         graph.Complete();
     }
 
+    /// <summary>Updates non-key Column fields on all documents matching every Key field.</summary>
+    /// <remarks>Uses $set without upsert. Keys must be mapped and non-null. Reference entities are not updated.
+    /// No matching document is not treated as an error. The caller owns the client.</remarks>
+    public static void Update<T>(this IMongoClient client, T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        var operation = CreateUpdate(entity);
+        client.GetDatabase(operation.Database).GetCollection<BsonDocument>(operation.Collection)
+            .UpdateMany(operation.Filter, operation.Update, new UpdateOptions { IsUpsert = false });
+    }
+
+    /// <summary>Asynchronously updates mapped fields on all documents matching every Key field.</summary>
+    /// <remarks>Uses the same mapping rules as Update and passes cancellation to the MongoDB driver.</remarks>
+    public static async Task UpdateAsync<T>(this IMongoClient client, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var operation = CreateUpdate(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        await client.GetDatabase(operation.Database).GetCollection<BsonDocument>(operation.Collection)
+            .UpdateManyAsync(operation.Filter, operation.Update, new UpdateOptions { IsUpsert = false }, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private sealed class DocumentBuilder : ICreateGraphCommandBuilder
     {
         public List<(string Database, string Collection, BsonDocument Document)> Documents { get; } = [];
@@ -62,11 +89,51 @@ public static class MongoClientExtensions
     {
         var mapping = TableMapping<T>.Create();
         mapping.ValidateGetters();
+        return (mapping, Serialize(mapping, entity));
+    }
+
+    internal static MongoUpdateOperation CreateUpdate<T>(T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var mapping = TableMapping<T>.Create();
+        mapping.ValidateGetters();
+        var columns = mapping.Columns.ToArray();
+        var keyProperties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.IsDefined(typeof(KeyAttribute))).ToArray();
+        if (keyProperties.Length == 0)
+            throw new InvalidOperationException($"Type '{typeof(T).FullName}' must have at least one Key property to update a document.");
+        foreach (var property in keyProperties)
+        {
+            if (!property.IsDefined(typeof(ColumnAttribute)))
+                throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{property.Name}' must have a Column attribute.");
+        }
+
+        var keys = columns.Where(column => column.Property.IsDefined(typeof(KeyAttribute))).ToArray();
+        var assignments = columns.Where(column => !column.Property.IsDefined(typeof(KeyAttribute))).ToArray();
+        if (assignments.Length == 0)
+            throw new InvalidOperationException($"Type '{typeof(T).FullName}' must have at least one non-key Column to update.");
+        foreach (var key in keys)
+        {
+            if (key.Property.GetValue(entity) is null)
+                throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{key.Property.Name}' must not be null when updating a document.");
+        }
+
+        var document = Serialize(mapping, entity);
+        var filter = new BsonDocument(keys.Select(key =>
+            new BsonElement(key.Name, document[key.Name].DeepClone())));
+        var fields = new BsonDocument(assignments.Select(column =>
+            new BsonElement(column.Name, document[column.Name].DeepClone())));
+        return new MongoUpdateOperation(mapping.Table.Schema, mapping.Table.Name, filter,
+            new BsonDocument("$set", fields));
+    }
+
+    private static BsonDocument Serialize<T>(TableMapping<T> mapping, T entity) where T : class, new()
+    {
         var serializer = new MongoDocumentSerializer<T>(mapping);
         var document = new BsonDocument();
         using var writer = new BsonDocumentWriter(document);
         serializer.Serialize(BsonSerializationContext.CreateRoot(writer), new BsonSerializationArgs { NominalType = typeof(T) }, entity);
-        return (mapping, document);
+        return document;
     }
 
     /// <summary>Reads all documents, populating properties marked with Column.</summary>
@@ -136,3 +203,6 @@ public static class MongoClientExtensions
         return rows;
     }
 }
+
+internal sealed record MongoUpdateOperation(
+    string Database, string Collection, BsonDocument Filter, BsonDocument Update);

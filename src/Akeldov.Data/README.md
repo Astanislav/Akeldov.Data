@@ -17,7 +17,7 @@ SQL Server and PostgreSQL expose public `Update` and `UpdateAsync` extensions
 backed by this executor. ClickHouse uses the same mapping and command-building
 infrastructure with its `ALTER TABLE ... UPDATE` mutation syntax. Kusto exposes
 equivalent extensions using its native `.update table` management command.
-MongoDB is not connected yet.
+MongoDB exposes equivalent client extensions backed by `UpdateMany` and `$set`.
 
 The target table comes from `Table`. Every public instance property marked with
 `Key` must also have `Column` and contain a non-null value. All keys participate in

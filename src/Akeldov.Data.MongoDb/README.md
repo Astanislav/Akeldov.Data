@@ -1,6 +1,6 @@
 # Akeldov.Data.MongoDb
 
-Reads and inserts mapped models with the official `MongoDB.Driver` SDK. Add a project
+Reads, inserts, and updates mapped models with the official `MongoDB.Driver` SDK. Add a project
 reference to `Akeldov.Data.MongoDb.csproj` and import `Akeldov.Data.MongoDb`.
 
 ```csharp
@@ -15,20 +15,23 @@ var minimum = 10;
 var matching = client.Select<User>(row => row.Score >= minimum && row.Active);
 var asyncRows = await client.SelectAsync<User>(row => row.Name == "Alice", cancellationToken);
 
-client.Create<User>(new User { Id = ObjectId.GenerateNewId(), Name = "Alice" });
+var userId = ObjectId.GenerateNewId();
+client.Create<User>(new User { Id = userId, Name = "Alice" });
 await client.CreateAsync(new User { Id = ObjectId.GenerateNewId(), Name = "Bob" }, cancellationToken);
+client.Update(new User { Id = userId, Name = "Updated", Active = true });
+await client.UpdateAsync(new User { Id = userId, Name = null }, cancellationToken);
 
 [Table("analytics", "users")]
 public class User
 {
-    [Column("_id")] public ObjectId Id { get; set; }
+    [Key, Column("_id")] public ObjectId Id { get; set; }
     [Column("name")] public string? Name { get; set; }
     [Column("score")] public int? Score { get; set; }
     [Column("active")] public bool Active { get; set; }
 }
 ```
 
-`cancellationToken` is a caller-supplied `CancellationToken`. `Table.Schema`
+`userId` and `cancellationToken` are caller-supplied values. `Table.Schema`
 specifies the database; `Table.Name` specifies the collection. Only properties
 marked with `Column` are projected and populated. Field names are case-sensitive.
 The `_id` field is excluded unless a property explicitly has `[Column("_id")]`.
@@ -115,6 +118,38 @@ public class Order
   constraints, generate referenced keys, load navigations or save collections.
   Ordinary mapped object properties still use the existing BSON serialization.
 
+## Update
+
+`Update` and `UpdateAsync` update every document matching the caller-supplied keys
+using `UpdateMany` with a `$set` update document.
+
+- Every `Key` must also have `Column` and a non-null value. Composite keys are
+  supported: all key fields are combined in one equality filter. Key fields are
+  never included in `$set`; changing a key is outside this API.
+- Every non-key `Column` is written, including BSON null values. This is a full
+  mapped-model update without change tracking or patch semantics. Unmapped model
+  properties are ignored, while existing document fields absent from the model
+  remain unchanged.
+- `Reference` entities are not inserted or updated. Mapped local foreign keys are
+  written exactly as supplied; navigation keys do not replace them.
+- The same operation-local serializers as Create and Select produce both the key
+  filter and update values. UUIDs therefore use subtype 4, dates use UTC, mapped
+  names are honored, and invalid top-level field names fail before database access.
+- `UpdateMany` updates every matching document. `IsUpsert` is explicitly false,
+  so no match is a no-op and never inserts a document. The methods do not return
+  matched or modified counts.
+- Each individual document update is atomic, but an update matching multiple
+  documents is not atomic as a whole and does not start a transaction. If a later
+  document fails, earlier successful document updates remain.
+- MongoDB does not allow changing `_id`; map it as a `Key` when it identifies the
+  document. Other server-side schema, validation, shard-key, and immutable-field
+  restrictions still apply.
+- The caller owns the client. `UpdateAsync` passes cancellation to the driver and
+  checks it before accessing the database.
+
+See MongoDB's [`updateMany` documentation](https://www.mongodb.com/docs/manual/reference/method/db.collection.updateMany/)
+for multi-document atomicity, sharding behavior, and server restrictions.
+
 The caller owns and disposes the client. Each select disposes its cursor, also
 on mapping errors or cancellation. The async API passes cancellation to both
 the initial query and subsequent cursor batches, and checks it between documents.
@@ -140,3 +175,6 @@ They cover sync/async execution, mapped projection, null and missing fields,
 field comparisons, case-sensitive names, cancellation, and several key types.
 Graph tests cover nested/shared references and BSON key round trips, plus retained
 dependency documents and restored in-memory FKs after a duplicate-key failure.
+Update tests use unique keys in `update_rows` and cover composite-key matching,
+multiple matching documents, null values, preservation of unmapped fields,
+no-upsert behavior, and cancellation.
