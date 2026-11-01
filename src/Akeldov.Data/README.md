@@ -47,3 +47,28 @@ Core tests use a fake ADO.NET connection and dialect; no database is required:
 ```powershell
 dotnet test tests/Akeldov.Data.Tests/Akeldov.Data.Tests.csproj
 ```
+
+## Delete infrastructure
+
+`DeleteExecutor` provides the shared, provider-independent implementation for
+deleting an entity by its mapped keys:
+
+- `CreateCommand(connection, dialect, entity)` prepares a parameterized SQL
+  `DELETE` without opening the connection.
+- `Delete(connection, dialect, entity)` executes the command and returns `void`.
+- `DeleteAsync(connection, dialect, entity, cancellationToken)` executes it
+  asynchronously and returns `Task`.
+
+The target table comes from `Table`. Every public instance property marked with
+`Key` must also have `Column` and contain a non-null value. All keys participate
+in the `WHERE` clause, joined with `AND`, so composite keys are supported. Key
+values use the same normalization and provider-supplied parameters as Create and
+Update. Default non-null keys are sent as supplied.
+
+Unmapped properties and `Reference` navigations are ignored. The executor does
+not traverse or cascade to related entities, perform an upsert, validate the
+affected-row count, or start a transaction. No matching row is not an error.
+
+Connection ownership, disposal, async cancellation, and state preservation match
+`UpdateExecutor`. This is core infrastructure only; database-provider packages do
+not expose `Delete` or `DeleteAsync` extensions yet.
