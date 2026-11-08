@@ -71,6 +71,7 @@ affected-row count, or start a transaction. No matching row is not an error.
 
 Connection ownership, disposal, async cancellation, and state preservation match
 `UpdateExecutor`. SQL Server and PostgreSQL expose public `Delete` and `DeleteAsync`
-extensions backed by this executor. Kusto exposes equivalent administration-provider
-extensions using its native `.delete table ... records` command. Other
-database-provider packages do not expose these extensions yet.
+extensions backed by this executor. ClickHouse reuses its command-building logic
+with `ALTER TABLE ... DELETE WHERE` and waits for mutation completion on the current
+server. Kusto exposes equivalent administration-provider extensions using its native
+`.delete table ... records` command. MongoDB does not expose these extensions yet.

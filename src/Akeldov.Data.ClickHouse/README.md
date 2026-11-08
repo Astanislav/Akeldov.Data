@@ -1,6 +1,6 @@
 # Akeldov.Data.ClickHouse
 
-Reads, inserts, and updates mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
+Reads, inserts, updates, and deletes mapped models with the official `ClickHouse.Driver` ADO.NET API. Add a
 project reference to `Akeldov.Data.ClickHouse.csproj` and import
 `Akeldov.Data.ClickHouse`.
 
@@ -157,6 +157,34 @@ See ClickHouse's guidance on
 [mutation-based updates](https://clickhouse.com/blog/handling-updates-and-deletes-in-clickhouse)
 for performance considerations and alternatives for frequent updates.
 
+## Delete
+
+`Delete` and `DeleteAsync` delete rows using `ALTER TABLE ... DELETE WHERE`:
+
+```csharp
+connection.Delete(new User { Id = userId });
+// Alternatively:
+await connection.DeleteAsync(new User { Id = userId }, cancellationToken);
+```
+
+- `Delete` returns `void`; `DeleteAsync` returns `Task`. Every `Key` must have
+  `Column` and a non-null value. All keys are combined with `AND`, and all matching
+  rows are deleted. Key-only models are supported; no match is a no-op.
+- Names are escaped and key values use native typed driver parameters. Missing/null
+  keys, invalid mappings and unsupported key values fail before opening the connection.
+- Non-key values are not read or serialized. `Reference` entities are not traversed,
+  and the supplied entity is not modified. No affected-row count is returned.
+- Like Update, the command uses `SETTINGS mutations_sync = 1` to wait for mutation
+  completion on the current server. It does not wait for every replica.
+- This operation requires a table engine supporting mutations, such as MergeTree.
+  It rewrites affected data parts and is intended for relatively infrequent deletes.
+- The caller owns the connection. Commands are disposed, connections opened by the
+  method are closed on success or failure, and already open connections remain open.
+  `DeleteAsync` passes cancellation to opening and execution. Canceling a request
+  does not guarantee that an already accepted server mutation stops.
+
+See the official [ALTER TABLE DELETE documentation](https://clickhouse.com/docs/sql-reference/statements/alter/delete).
+
 Run local tests without a server:
 
 ```powershell
@@ -171,6 +199,8 @@ as reference ordering, shared objects, FK propagation and restoration, graph
 validation, and cancellation during graph insertion.
 Update tests cover composite keys, synchronous mutation settings, typed parameters,
 mapping validation, connection ownership, server errors, and cancellation.
+Delete tests cover native key bindings, key-only models, ignored references and
+non-key values, connection ownership, server errors, and cancellation during execution.
 
 Run integration tests against an isolated Docker container (Linux containers):
 
@@ -185,3 +215,5 @@ connection state after successful and failed queries. Create tests also check
 nested/shared references and retained dependency rows after a later insert fails.
 Update tests check composite-key matching, null values, preservation of unmapped
 table columns, no-match behavior, synchronous visibility, and cancellation.
+Delete tests check all composite-key matches, duplicate rows, immediate visibility,
+preserved references, no-match behavior, cancellation, and connection state after errors.

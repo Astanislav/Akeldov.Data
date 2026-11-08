@@ -5,7 +5,7 @@ using ClickHouse.Driver.ADO;
 
 namespace Akeldov.Data.ClickHouse;
 
-/// <summary>Reads, inserts, and updates mapped models using the official ClickHouse ADO.NET driver.</summary>
+/// <summary>Reads, inserts, updates, and deletes mapped models using the official ClickHouse ADO.NET driver.</summary>
 /// <remarks>Table.Schema specifies the database. Connections opened by an operation are closed afterwards.</remarks>
 public static class ClickHouseConnectionExtensions
 {
@@ -77,6 +77,21 @@ public static class ClickHouseConnectionExtensions
     public static Task UpdateAsync<T>(this ClickHouseConnection connection, T entity,
         CancellationToken cancellationToken = default) where T : class, new()
         => ClickHouseUpdateExecutor.UpdateAsync(connection, entity, cancellationToken);
+
+    /// <summary>Deletes rows matching all Key properties of the supplied entity.</summary>
+    /// <remarks>Uses ALTER TABLE DELETE with mutations_sync = 1 to await completion on the current server.
+    /// Keys must be mapped and non-null. Reference entities are not traversed. No match is not an error.
+    /// Requires a table engine that supports mutations. Connections opened here are closed afterwards.</remarks>
+    public static void Delete<T>(this ClickHouseConnection connection, T entity) where T : class, new()
+        => ClickHouseDeleteExecutor.Delete(connection, entity);
+
+    /// <summary>Asynchronously deletes rows matching all Key properties and awaits the mutation.</summary>
+    /// <remarks>Uses the same mapping rules as Delete and passes cancellation to the driver.
+    /// Canceling the request does not guarantee cancellation of an accepted server mutation.
+    /// Connections opened here are closed afterwards.</remarks>
+    public static Task DeleteAsync<T>(this ClickHouseConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => ClickHouseDeleteExecutor.DeleteAsync(connection, entity, cancellationToken);
 
     private sealed class CommandBuilder(ClickHouseConnection connection) : ICreateGraphCommandBuilder
     {

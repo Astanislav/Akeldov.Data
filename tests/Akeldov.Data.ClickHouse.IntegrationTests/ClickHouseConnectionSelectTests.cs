@@ -44,6 +44,7 @@ public partial class ClickHouseConnectionSelectTests
             await Execute(connection, "CREATE TABLE analytics.regions (id UUID) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.customers (id UUID, region_id Nullable(UUID)) ENGINE = Memory", cancellation.Token);
             await Execute(connection, "CREATE TABLE analytics.orders (id UUID, buyer_id UUID, recipient_id UUID) ENGINE = Memory", cancellation.Token);
+            await Execute(connection, "CREATE TABLE analytics.delete_orders (id UUID, customer_id UUID) ENGINE = MergeTree ORDER BY id", cancellation.Token);
             await Execute(connection, """
                 CREATE TABLE analytics.update_rows
                 (
