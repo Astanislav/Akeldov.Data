@@ -1,7 +1,7 @@
 # Kusto integration tests
 
 These tests execute the public `Select<T>`, `SelectAsync<T>`, `Create<T>`,
-`CreateAsync<T>`, `Update<T>` and `UpdateAsync<T>` APIs through
+`CreateAsync<T>`, `Update<T>`, `UpdateAsync<T>`, `Delete<T>` and `DeleteAsync<T>` APIs through
 `Microsoft.Azure.Kusto.Data` against the Kusto query engine. Testcontainers
 starts an isolated Linux container using
 `mcr.microsoft.com/azuredataexplorer/kustainer-linux:stable`, waits for its
@@ -49,6 +49,8 @@ Coverage includes:
 - Partial ingestion on owner failure: earlier rows remain and in-memory foreign keys are restored.
 - Atomic sync/async updates with composite keys, null values, no-match behavior,
   preservation of unmapped columns, and pre-cancellation.
+- Sync/async deletes with composite keys, duplicate matches, key-only models,
+  no-match behavior, preserved references, pre-cancellation and client reuse after errors.
 
 To run only local unit tests across the solution:
 

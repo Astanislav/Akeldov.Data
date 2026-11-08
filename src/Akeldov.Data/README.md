@@ -70,6 +70,7 @@ not traverse or cascade to related entities, perform an upsert, validate the
 affected-row count, or start a transaction. No matching row is not an error.
 
 Connection ownership, disposal, async cancellation, and state preservation match
-`UpdateExecutor`. SQL Server and PostgreSQL expose public `Delete` and `DeleteAsync` extensions
-backed by this executor. Other database-provider packages do not expose these
-extensions yet.
+`UpdateExecutor`. SQL Server and PostgreSQL expose public `Delete` and `DeleteAsync`
+extensions backed by this executor. Kusto exposes equivalent administration-provider
+extensions using its native `.delete table ... records` command. Other
+database-provider packages do not expose these extensions yet.

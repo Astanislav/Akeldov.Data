@@ -5,7 +5,7 @@ using Kusto.Data.Common;
 
 namespace Akeldov.Data.Kusto;
 
-/// <summary>Inserts and updates mapped models using a caller-owned Kusto administration client.</summary>
+/// <summary>Inserts, updates and deletes mapped models using a caller-owned Kusto administration client.</summary>
 public static class KustoAdminProviderExtensions
 {
     /// <summary>Inserts a row and its Reference entities using inline JSON ingestion and explicit column mappings.</summary>
@@ -74,6 +74,61 @@ public static class KustoAdminProviderExtensions
         using var reader = await provider.ExecuteControlCommandAsync(database, command, new ClientRequestProperties())
             .ConfigureAwait(false);
         while (reader.Read()) { }
+    }
+
+    /// <summary>Deletes rows matching all Key properties using Kusto's .delete table records command.</summary>
+    /// <remarks>Keys must be mapped and non-null. Reference entities are not traversed.
+    /// No matching row is not treated as an error. Requires Database Admin permission.
+    /// This is Kusto soft delete; storage artifacts are not necessarily removed.</remarks>
+    public static void Delete<T>(this ICslAdminProvider provider, T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        var (database, command) = CreateDeleteCommand(entity);
+        using var reader = provider.ExecuteControlCommand(database, command, new ClientRequestProperties());
+        while (reader.Read()) { }
+    }
+
+    /// <summary>Asynchronously deletes rows matching all Key properties and awaits command completion.</summary>
+    /// <remarks>Uses the same mapping and permission rules as Delete. The SDK does not accept a cancellation token
+    /// for control commands; cancellation is checked before sending and cannot stop a command already in progress.</remarks>
+    public static async Task DeleteAsync<T>(this ICslAdminProvider provider, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var (database, command) = CreateDeleteCommand(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var reader = await provider.ExecuteControlCommandAsync(database, command, new ClientRequestProperties())
+            .ConfigureAwait(false);
+        while (reader.Read()) { }
+    }
+
+    internal static (string Database, string Command) CreateDeleteCommand<T>(T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var mapping = TableMapping<T>.Create();
+        mapping.ValidateGetters();
+        var keyProperties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.IsDefined(typeof(KeyAttribute))).ToArray();
+        if (keyProperties.Length == 0)
+            throw new InvalidOperationException($"Type '{typeof(T).FullName}' must have at least one Key property to delete a row.");
+        foreach (var property in keyProperties)
+        {
+            if (!property.IsDefined(typeof(ColumnAttribute)))
+                throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{property.Name}' must have a Column attribute.");
+        }
+
+        var keys = mapping.Columns.Where(column => column.Property.IsDefined(typeof(KeyAttribute)));
+        var where = keys.Select(key =>
+        {
+            var value = key.Property.GetValue(entity)
+                ?? throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{key.Property.Name}' must not be null when deleting a row.");
+            return $"{KqlSyntax.QuoteIdentifier(key.Name)} == {CreateScalarLiteral(key.Property.PropertyType, value)}";
+        });
+        var table = KqlSyntax.QuoteIdentifier(mapping.Table.Name);
+        var command = $".delete table {table} records <|\n{table}\n    | where {string.Join(" and ", where)}";
+        return (mapping.Table.Schema, command);
     }
 
     private sealed class CommandBuilder : ICreateGraphCommandBuilder

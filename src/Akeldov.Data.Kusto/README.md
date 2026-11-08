@@ -157,6 +157,36 @@ performs ingestion work. See the official
 [`.update table` documentation](https://learn.microsoft.com/en-us/kusto/management/update-table-command)
 for limits, permissions, and operational guidance.
 
+## Delete
+
+`Delete` and `DeleteAsync` are extensions on `ICslAdminProvider` that use Kusto's
+native `.delete table ... records` command:
+
+```csharp
+admin.Delete(new User { Id = 42 });
+// Alternatively:
+await admin.DeleteAsync(new User { Id = 42 }, cancellationToken);
+```
+
+- `Delete` returns `void`; `DeleteAsync` returns `Task`. Both wait for command
+  completion; the generated command does not use Kusto's server-side `async` mode.
+- Every `Key` must have `Column` and a non-null value. All keys are joined with
+  `and`; every matching row is deleted. No match is a no-op. Key-only models work.
+- Table and column names are escaped; key values use typed KQL scalar literals.
+  Invalid mappings, missing/null keys and unsupported key values fail locally.
+- Non-key values are not read or serialized. `Reference` entities are not
+  traversed, and the supplied entity is not modified.
+- The caller owns the provider; result readers are consumed and disposed.
+  The SDK control-command API has no cancellation-token argument. `DeleteAsync`
+  checks cancellation before sending, but awaits an in-flight command even if
+  cancellation is subsequently requested.
+
+This operation requires Database Admin permission and performs Kusto soft delete:
+matching records disappear from queries and cannot be recovered, but their storage
+artifacts are not necessarily removed. Avoid concurrent deletes on the same table.
+See the [command syntax](https://learn.microsoft.com/en-us/kusto/management/soft-delete-command?view=azure-data-explorer)
+and [soft delete behavior](https://learn.microsoft.com/en-us/kusto/concepts/data-soft-delete).
+
 Run local tests without a cluster:
 
 ```powershell
