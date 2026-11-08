@@ -74,4 +74,5 @@ Connection ownership, disposal, async cancellation, and state preservation match
 extensions backed by this executor. ClickHouse reuses its command-building logic
 with `ALTER TABLE ... DELETE WHERE` and waits for mutation completion on the current
 server. Kusto exposes equivalent administration-provider extensions using its native
-`.delete table ... records` command. MongoDB does not expose these extensions yet.
+`.delete table ... records` command. MongoDB exposes client extensions backed by
+`DeleteMany` and a BSON equality filter over all mapped keys.

@@ -7,7 +7,7 @@ using MongoDB.Driver;
 
 namespace Akeldov.Data.MongoDb;
 
-/// <summary>Reads, inserts, and updates mapped models in MongoDB collections.</summary>
+/// <summary>Reads, inserts, updates, and deletes mapped models in MongoDB collections.</summary>
 /// <remarks>Table.Schema specifies the database and Table.Name the collection. The caller owns the client.</remarks>
 public static class MongoClientExtensions
 {
@@ -72,6 +72,71 @@ public static class MongoClientExtensions
         await client.GetDatabase(operation.Database).GetCollection<BsonDocument>(operation.Collection)
             .UpdateManyAsync(operation.Filter, operation.Update, new UpdateOptions { IsUpsert = false }, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>Deletes all documents matching every Key field of the supplied entity.</summary>
+    /// <remarks>Keys must be mapped and non-null. Reference entities are not traversed.
+    /// No matching document is not treated as an error. The caller owns the client.</remarks>
+    public static void Delete<T>(this IMongoClient client, T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        var operation = CreateDelete(entity);
+        client.GetDatabase(operation.Database).GetCollection<BsonDocument>(operation.Collection)
+            .DeleteMany(operation.Filter);
+    }
+
+    /// <summary>Asynchronously deletes all documents matching every Key field.</summary>
+    /// <remarks>Uses the same mapping rules as Delete and passes cancellation to the MongoDB driver.</remarks>
+    public static async Task DeleteAsync<T>(this IMongoClient client, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        var operation = CreateDelete(entity);
+        cancellationToken.ThrowIfCancellationRequested();
+        await client.GetDatabase(operation.Database).GetCollection<BsonDocument>(operation.Collection)
+            .DeleteManyAsync(operation.Filter, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static MongoDeleteOperation CreateDelete<T>(T entity) where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var mapping = TableMapping<T>.Create();
+        mapping.ValidateGetters();
+        var keyProperties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.IsDefined(typeof(KeyAttribute))).ToArray();
+        if (keyProperties.Length == 0)
+            throw new InvalidOperationException($"Type '{typeof(T).FullName}' must have at least one Key property to delete a document.");
+        foreach (var property in keyProperties)
+        {
+            if (!property.IsDefined(typeof(ColumnAttribute)))
+                throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{property.Name}' must have a Column attribute.");
+        }
+
+        var serializer = new MongoDocumentSerializer<T>(mapping);
+        var filter = new BsonDocument();
+        using (var writer = new BsonDocumentWriter(filter))
+        {
+            var context = BsonSerializationContext.CreateRoot(writer);
+            writer.WriteStartDocument();
+            foreach (var key in mapping.Columns.Where(column => column.Property.IsDefined(typeof(KeyAttribute))))
+            {
+                var value = key.Property.GetValue(entity)
+                    ?? throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{key.Property.Name}' must not be null when deleting a document.");
+                serializer.TryGetMemberSerializationInfo(key.Property.Name, out var info);
+                writer.WriteName(key.Name);
+                writer.WriteStartDocument();
+                // Explicit equality keeps BSON documents and regex values from becoming query operators.
+                writer.WriteName("$eq");
+                info.Serializer.Serialize(context, new BsonSerializationArgs { NominalType = info.NominalType }, value);
+                writer.WriteEndDocument();
+                if (filter[key.Name]["$eq"].IsBsonNull)
+                    throw new InvalidOperationException($"Key property '{typeof(T).FullName}.{key.Property.Name}' must not serialize to BSON null when deleting a document.");
+            }
+            writer.WriteEndDocument();
+        }
+        return new MongoDeleteOperation(mapping.Table.Schema, mapping.Table.Name, filter);
     }
 
     private sealed class DocumentBuilder : ICreateGraphCommandBuilder
@@ -206,3 +271,5 @@ public static class MongoClientExtensions
 
 internal sealed record MongoUpdateOperation(
     string Database, string Collection, BsonDocument Filter, BsonDocument Update);
+
+internal sealed record MongoDeleteOperation(string Database, string Collection, BsonDocument Filter);

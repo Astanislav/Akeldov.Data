@@ -1,6 +1,6 @@
 # Akeldov.Data.MongoDb
 
-Reads, inserts, and updates mapped models with the official `MongoDB.Driver` SDK. Add a project
+Reads, inserts, updates, and deletes mapped models with the official `MongoDB.Driver` SDK. Add a project
 reference to `Akeldov.Data.MongoDb.csproj` and import `Akeldov.Data.MongoDb`.
 
 ```csharp
@@ -59,7 +59,7 @@ see the driver's [query filter documentation](https://www.mongodb.com/docs/drive
 Column names must be top-level field names without dots, a leading `$`, or null
 characters. Nested member queries can use a mapped object property and the
 driver's serializers for that object's members. Use the SDK directly for
-bulk writes, updates, deletes, aggregation, sorting, paging, and legacy UUID handling.
+bulk writes, custom update/delete operations, aggregation, sorting, paging, and legacy UUID handling.
 
 `Create<T>(entity)` returns `void`; `CreateAsync<T>` returns `Task`. Both insert
 a document and its `Reference` entities through the same local serializer, including only `Column` properties
@@ -150,6 +150,36 @@ using `UpdateMany` with a `$set` update document.
 See MongoDB's [`updateMany` documentation](https://www.mongodb.com/docs/manual/reference/method/db.collection.updateMany/)
 for multi-document atomicity, sharding behavior, and server restrictions.
 
+## Delete
+
+`Delete` and `DeleteAsync` delete every document matching the supplied entity's keys:
+
+```csharp
+client.Delete(new User { Id = userId });
+// Alternatively:
+await client.DeleteAsync(new User { Id = userId }, cancellationToken);
+```
+
+- `Delete` returns `void`; `DeleteAsync` returns `Task`. They call `DeleteMany`
+  and `DeleteManyAsync` respectively. No match is a no-op; deleted counts are not returned.
+- Every `Key` must have `Column` and a non-null value. All keys participate in the
+  filter, including composite keys. Key-only models work. Default non-null keys,
+  such as `0`, `Guid.Empty` and `ObjectId.Empty`, are sent as supplied.
+- Keys use the existing operation-local serializers: `Column` controls field
+  names, GUIDs use standard UUID subtype 4, and dates use UTC. Explicit `$eq`
+  comparisons keep BSON document and regex keys from being interpreted as operators.
+  MongoDB equality semantics apply.
+- Invalid mappings, field names, null keys (including serialized BSON null), and
+  key serialization failures are rejected before database access. Non-key values
+  are not read or serialized, and `Reference` entities are not traversed.
+- The supplied entity remains unchanged. No transaction is started; deletion of
+  multiple documents is not atomic as a whole. The caller owns the client.
+- `DeleteAsync` checks cancellation before database access, passes the token to
+  the driver, and awaits completion. Cancellation does not roll back documents
+  already deleted by the server.
+
+See the driver's [delete documentation](https://www.mongodb.com/docs/drivers/csharp/current/crud/delete/).
+
 The caller owns and disposes the client. Each select disposes its cursor, also
 on mapping errors or cancellation. The async API passes cancellation to both
 the initial query and subsequent cursor batches, and checks it between documents.
@@ -178,3 +208,7 @@ dependency documents and restored in-memory FKs after a duplicate-key failure.
 Update tests use unique keys in `update_rows` and cover composite-key matching,
 multiple matching documents, null values, preservation of unmapped fields,
 no-upsert behavior, and cancellation.
+Delete tests use unique keys in `update_rows`, `created_orders`, `created_customers`,
+`created_regions`, and `delete_string_keys`. They cover composite keys, multiple
+matches, key-only models, ObjectId/GUID/string keys, preserved references,
+no-match behavior and pre-cancellation.
