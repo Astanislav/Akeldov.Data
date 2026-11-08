@@ -33,6 +33,19 @@ public static class SqlConnectionExtensions
         CancellationToken cancellationToken = default) where T : class, new()
         => UpdateExecutor.UpdateAsync(connection, SqlServerDialect.Instance, entity, cancellationToken);
 
+    /// <summary>Deletes rows matching all Key properties of the supplied entity.</summary>
+    /// <remarks>Keys must be mapped and non-null. Reference entities are not traversed.
+    /// No matching row is not treated as an error. Connections opened here are closed afterwards.</remarks>
+    public static void Delete<T>(this SqlConnection connection, T entity) where T : class, new()
+        => DeleteExecutor.Delete(connection, SqlServerDialect.Instance, entity);
+
+    /// <summary>Asynchronously deletes rows matching all Key properties of the supplied entity.</summary>
+    /// <remarks>Uses the same mapping rules as Delete. Cancellation is passed to the driver.
+    /// Connections opened here are closed afterwards.</remarks>
+    public static Task DeleteAsync<T>(this SqlConnection connection, T entity,
+        CancellationToken cancellationToken = default) where T : class, new()
+        => DeleteExecutor.DeleteAsync(connection, SqlServerDialect.Instance, entity, cancellationToken);
+
     /// <summary>Reads all rows from the mapped table.</summary>
     /// <remarks>A connection opened by this method is closed after reading.</remarks>
     public static List<T> Select<T>(this SqlConnection connection) where T : class, new()

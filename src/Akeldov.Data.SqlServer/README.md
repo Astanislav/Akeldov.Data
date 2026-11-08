@@ -91,6 +91,32 @@ await connection.UpdateAsync(new Customer { Id = 42, Name = null }, cancellation
   open connections remain open. Commands are disposed. The async method passes
   cancellation to connection opening and execution.
 
+## Delete
+
+`Delete` and `DeleteAsync` delete rows using the supplied entity's keys:
+
+```csharp
+connection.Delete(new Customer { Id = 42 });
+// Alternatively:
+await connection.DeleteAsync(new Customer { Id = 42 }, cancellationToken);
+```
+
+- `Delete` returns `void`; `DeleteAsync` returns `Task` and accepts an optional
+  `CancellationToken`.
+- Every `Key` must also have `Column` and a non-null value. All key columns are
+  combined with `AND` in `WHERE`, including composite keys. Models containing
+  only key columns are supported. Non-key values do not participate in deletion.
+- Identifiers are quoted and key values are parameterized. Missing/null keys,
+  invalid mappings and unsupported key values fail before opening the connection.
+- `Reference` entities are not traversed. SQL Server enforces database constraints,
+  including any configured cascading deletes.
+- No matching row is not treated as an error. The methods do not return the
+  affected-row count or modify the supplied entity.
+- Each call executes one statement without starting an explicit transaction.
+  Connections opened by the method are closed on completion or failure; already
+  open connections remain open. Commands are disposed. The async method passes
+  cancellation to connection opening and execution.
+
 Run local tests without a server:
 
 ```powershell
