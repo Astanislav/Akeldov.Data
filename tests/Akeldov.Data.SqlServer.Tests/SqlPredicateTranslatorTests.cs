@@ -9,6 +9,33 @@ namespace Akeldov.Data.SqlServer.Tests;
 [TestFixture]
 public class SqlPredicateTranslatorTests
 {
+    [Test]
+    public void Translate_IsNullOrEmpty_ChecksNullAndExactEmptyWithoutParameters()
+    {
+        var result = Translate(user => string.IsNullOrEmpty(user.Name));
+
+        // DATALENGTH preserves spaces, unlike LEN or comparison with an empty string.
+        Assert.That(result.Sql, Is.EqualTo("([display_name] IS NULL OR DATALENGTH([display_name]) = 0)"));
+        Assert.That(result.Parameters, Is.Empty);
+    }
+
+    [Test]
+    public void Translate_IsNullOrEmpty_ComposesWithNegationAndOtherFilters()
+    {
+        var result = Translate(user => !string.IsNullOrEmpty(user.Name) && (user.Id > 5 || user.Name!.StartsWith("abc")));
+
+        Assert.That(result.Sql, Is.EqualTo("((NOT ([display_name] IS NULL OR DATALENGTH([display_name]) = 0)) AND (([user_id] > @p0) OR ([display_name] LIKE @p1 ESCAPE '~')))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new object[] { 5, "abc%" }));
+    }
+
+    [Test]
+    public void Translate_IsNullOrEmpty_UnmappedPropertyThrows()
+    {
+        Assert.That(() => SqlPredicateTranslator<SqlServerDialectTests.Row>.Translate(
+            TableMapping<SqlServerDialectTests.Row>.Create(), row => string.IsNullOrEmpty(row.Unmapped), SqlServerDialect.Instance),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
     [TestCase("abc", "abc%", "%abc")]
     [TestCase("", "%", "%")]
     [TestCase("50%_[x]~", "50~%~_~[x]~~%", "%50~%~_~[x]~~")]

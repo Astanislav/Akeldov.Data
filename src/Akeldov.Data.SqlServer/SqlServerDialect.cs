@@ -13,6 +13,8 @@ internal sealed class SqlServerDialect : ISqlDialect
     public string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
     public string GetParameterPlaceholder(int index) => $"@p{index}";
     public string FormatBooleanCondition(string operand) => $"({operand} = 1)";
+    public string FormatIsNullOrEmptyCondition(string operand)
+        => $"({operand} IS NULL OR DATALENGTH({operand}) = 0)";
     public string CreateStringPattern(string value, string methodName)
     {
         var escaped = value.Replace("~", "~~").Replace("%", "~%").Replace("_", "~_").Replace("[", "~[");

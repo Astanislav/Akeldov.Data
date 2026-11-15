@@ -10,6 +10,11 @@ Matching follows the SQL Server column collation. NULL columns follow SQL LIKE
 semantics (including under negation). Null search values and the `char` and
 `StringComparison` overloads are not supported.
 
+`row => string.IsNullOrEmpty(row.Name)` translates to
+`([Name] IS NULL OR DATALENGTH([Name]) = 0)` without parameters.
+Unlike comparison with `''`, this does not treat spaces as an empty string.
+Negation (`!`) and combinations with `&&` and `||` are supported.
+
 `Create` and `CreateAsync` insert mapped rows and recursively save entities marked with `Reference`.
 The referenced entity is inserted first; its `Key` value is then copied into the
 local property named by `Reference`, which must have `Column` and `ForeignKey`.

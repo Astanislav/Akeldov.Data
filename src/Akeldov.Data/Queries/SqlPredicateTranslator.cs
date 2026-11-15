@@ -44,6 +44,17 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
             return $"(NOT {TranslatePredicate(negation.Operand)})";
         }
 
+        if (expression is MethodCallExpression nullOrEmpty
+            && nullOrEmpty.Method.DeclaringType == typeof(string)
+            && nullOrEmpty.Method.Name == nameof(string.IsNullOrEmpty)
+            && nullOrEmpty.Arguments.Count == 1
+            && nullOrEmpty.Arguments[0] is MemberExpression { Member: PropertyInfo, Expression: var owner }
+            && owner == rowParameter)
+        {
+            var operand = TranslateOperand(nullOrEmpty.Arguments[0]);
+            return dialect.FormatIsNullOrEmptyCondition(operand.Sql);
+        }
+
         if (expression is MethodCallExpression call
             && call.Method.DeclaringType == typeof(string)
             && call.Method.Name is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith)
