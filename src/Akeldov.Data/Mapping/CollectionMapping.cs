@@ -7,22 +7,22 @@ internal sealed record CollectionMapping(
     PropertyInfo ParentKey, string ParentKeyColumn,
     PropertyInfo ForeignKey, string ForeignKeyColumn)
 {
-    internal static CollectionMapping Create(Type parentType, PropertyInfo property, CollectionAttribute attribute)
+    internal static bool IsCollection(Type type) => type != typeof(string)
+        && typeof(System.Collections.IEnumerable).IsAssignableFrom(type);
+
+    internal static CollectionMapping Create(Type parentType, PropertyInfo property, ReferenceAttribute attribute)
     {
         InvalidOperationException Invalid(string reason)
             => new($"Collection '{parentType.FullName}.{property.Name}' {reason}.");
 
-        if (property.GetGetMethod() is null || property.GetIndexParameters().Length != 0
-            || property.IsDefined(typeof(ColumnAttribute)) || property.IsDefined(typeof(ReferenceAttribute)))
-            throw Invalid("must have a public getter and must not be an indexer, Column or Reference");
+        if (property.GetGetMethod() is null || property.GetSetMethod() is null || property.GetIndexParameters().Length != 0
+            || property.IsDefined(typeof(ColumnAttribute)))
+            throw Invalid("must have public getter and setter and must not be an indexer or Column");
 
-        var elementTypes = property.PropertyType.GetInterfaces().Append(property.PropertyType)
-            .Where(type => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            .Select(type => type.GetGenericArguments()[0]).Distinct().ToArray();
-        if (elementTypes.Length != 1 || property.PropertyType == typeof(string))
-            throw Invalid("must implement IEnumerable<T> for exactly one entity type");
-
-        var elementType = elementTypes[0];
+        var type = property.PropertyType;
+        var elementType = type.IsArray && type.GetArrayRank() == 1 ? type.GetElementType()
+            : type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>) ? type.GetGenericArguments()[0] : null;
+        if (elementType is null) throw Invalid("must be List<T> or a one-dimensional array");
         if (!elementType.IsClass || elementType.IsAbstract || elementType.GetConstructor(Type.EmptyTypes) is null)
             throw Invalid("must contain concrete entities with a public parameterless constructor");
         var table = elementType.GetCustomAttribute<TableAttribute>()

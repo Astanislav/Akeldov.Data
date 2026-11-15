@@ -5,7 +5,7 @@ providers. SQL identifiers and parameters are supplied by each provider's dialec
 
 ## Collection relationships
 
-Use `Collection` on a navigation to name the child's CLR foreign key property:
+Use `Reference` on a `List<T>` or `T[]` navigation to name the child's CLR foreign key property:
 
 ```csharp
 [Table("dbo", "Orders")]
@@ -14,7 +14,7 @@ public class Order
     [Key, Column("Id")]
     public int Id { get; set; }
 
-    [Collection(nameof(OrderItem.OrderId))]
+    [Reference(nameof(OrderItem.OrderId))]
     public List<OrderItem> Items { get; set; } = [];
 }
 
@@ -33,15 +33,19 @@ public class OrderItem
 ```
 
 The shared table mapper validates the relationship and records the child table,
-parent key and child foreign key without reading the collection. Arrays, lists and
-`IEnumerable<T>` collection interfaces are supported, including getter-only
-navigations. The child must be a mapped concrete entity with a public parameterless
+parent key and child foreign key without reading the collection. Lists and
+one-dimensional arrays with public getters and setters are supported.
+The child must be a mapped concrete entity with a public parameterless
 constructor. The foreign key must reference the declaring model's single mapped
 `Key` and have a compatible type (nullable foreign keys are allowed). Composite
-parent keys are currently rejected. Navigations cannot also be `Column` or `Reference`.
+parent keys are currently rejected. Navigations cannot also be `Column`.
 
-This is relationship metadata only. It does not automatically load or save children,
-create database constraints, or enable collection aggregates in predicates yet.
+SQL Server `Select` loads direct child collections using additional parameterized
+queries, in batches of up to 2000 parent keys per collection. No matching children
+produces an empty list or array. Nested collections and single-entity navigations
+are not automatically loaded. Other providers currently treat collection references
+as metadata. Create does not insert collection children; Update and Delete do not
+cascade to them. Database constraints and aggregate predicates are not generated.
 
 ## Update infrastructure
 

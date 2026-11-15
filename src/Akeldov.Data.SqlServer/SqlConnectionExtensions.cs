@@ -46,12 +46,12 @@ public static class SqlConnectionExtensions
         CancellationToken cancellationToken = default) where T : class, new()
         => DeleteExecutor.DeleteAsync(connection, SqlServerDialect.Instance, entity, cancellationToken);
 
-    /// <summary>Reads all rows from the mapped table.</summary>
+    /// <summary>Reads all rows and their direct Reference collections (List&lt;T&gt; or T[]).</summary>
     /// <remarks>A connection opened by this method is closed after reading.</remarks>
     public static List<T> Select<T>(this SqlConnection connection) where T : class, new()
         => SelectExecutor.Select<T>(connection, SqlServerDialect.Instance);
 
-    /// <summary>Reads matching rows using a parameterized SQL predicate.</summary>
+    /// <summary>Reads matching rows and their direct Reference collections using parameterized queries.</summary>
     /// <remarks>Unsupported expressions throw before the connection is opened.</remarks>
     public static List<T> Select<T>(this SqlConnection connection, Expression<Func<T, bool>> predicate)
         where T : class, new()

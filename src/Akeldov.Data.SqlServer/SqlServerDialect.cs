@@ -10,6 +10,7 @@ internal sealed class SqlServerDialect : ISqlDialect
 
     public StringComparer ColumnNameComparer => StringComparer.OrdinalIgnoreCase;
     public bool SupportsCollectionContains => true;
+    public bool LoadsReferenceCollections => true;
 
     public string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
     public string GetParameterPlaceholder(int index) => $"@p{index}";

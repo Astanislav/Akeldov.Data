@@ -1,5 +1,17 @@
 # SQL Server
 
+`Select<T>()` and `Select<T>(predicate)` populate direct child collections marked
+with `[Reference(nameof(Child.ParentId))]`. Use `List<Child>` or `Child[]` with public
+getters and setters. The child's `ParentId` must have `Column` and
+`ForeignKey(typeof(Parent), nameof(Parent.Id))`; the parent must have a single mapped
+`Key`. See the core README for a complete model example.
+
+Children are fetched after the parent reader is closed, using parameterized queries
+with up to 2000 parent keys per batch, then assigned to each parent. Empty collections
+are assigned when no children match. This loads one level only, without recursive
+loading or aggregate predicates. The separate queries do not establish a snapshot
+transaction. Collection children are not automatically inserted, updated or deleted.
+
 `row.Name.Trim() == value` uses `LTRIM(RTRIM([Name]))` with a parameter for
 `value`, preserving null comparison guards and logical operators.
 Only parameterless `Trim()` on mapped string properties is supported.
@@ -96,8 +108,8 @@ public class Order
   and passed to the driver. Rollback uses an uncanceled token so cancellation does
   not prevent cleanup; a rollback error does not replace the original operation error.
 - A graph containing only one row does not start an explicit transaction.
-- `Reference` describes a single entity reached through a local foreign key, not
-  a collection of children.
+- For a single entity, `Reference` names the local foreign key; for `List<T>` or
+  `T[]`, it names the child's foreign key. Create traverses only single-entity references.
 
 ## Update
 

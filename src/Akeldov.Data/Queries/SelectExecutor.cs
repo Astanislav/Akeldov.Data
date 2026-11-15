@@ -12,6 +12,7 @@ internal static class SelectExecutor
     {
         ArgumentNullException.ThrowIfNull(connection);
         var mapping = TableMapping<T>.Create();
+        var loaders = CollectionLoader.Prepare(mapping, dialect);
         using var command = CreateSelectCommand(connection, mapping, dialect, predicate);
         var shouldClose = connection.State == ConnectionState.Closed;
 
@@ -22,8 +23,11 @@ internal static class SelectExecutor
                 connection.Open();
             }
 
-            using var reader = command.ExecuteReader();
-            return mapping.Read(reader);
+            List<T> rows;
+            using (var reader = command.ExecuteReader()) rows = mapping.Read(reader);
+            var parents = rows.Cast<object>().ToArray();
+            foreach (var loader in loaders) loader.Load(connection, parents);
+            return rows;
         }
         finally
         {
@@ -41,6 +45,7 @@ internal static class SelectExecutor
         ArgumentNullException.ThrowIfNull(connection);
         cancellationToken.ThrowIfCancellationRequested();
         var mapping = TableMapping<T>.Create();
+        var loaders = CollectionLoader.Prepare(mapping, dialect);
         await using var command = CreateSelectCommand(connection, mapping, dialect, predicate);
         var shouldClose = connection.State == ConnectionState.Closed;
 
@@ -51,8 +56,13 @@ internal static class SelectExecutor
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            return await mapping.ReadAsync(reader, cancellationToken).ConfigureAwait(false);
+            List<T> rows;
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+                rows = await mapping.ReadAsync(reader, cancellationToken).ConfigureAwait(false);
+            var parents = rows.Cast<object>().ToArray();
+            foreach (var loader in loaders)
+                await loader.LoadAsync(connection, parents, cancellationToken).ConfigureAwait(false);
+            return rows;
         }
         finally
         {

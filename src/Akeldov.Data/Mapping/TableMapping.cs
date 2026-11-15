@@ -21,7 +21,7 @@ internal sealed class TableMapping<T> where T : class, new()
 
     internal CollectionMapping GetCollection(PropertyInfo property)
         => Collections.SingleOrDefault(collection => collection.Property == property)
-            ?? throw new NotSupportedException($"Property '{property.Name}' must be mapped with a Collection attribute.");
+            ?? throw new NotSupportedException($"Property '{property.Name}' must be a collection mapped with a Reference attribute.");
 
     internal IEnumerable<string> ColumnNames => columns.Select(column => column.Name);
 
@@ -108,8 +108,8 @@ internal sealed class TableMapping<T> where T : class, new()
         }
 
         var collections = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(property => property.IsDefined(typeof(CollectionAttribute)))
-            .Select(property => CollectionMapping.Create(type, property, property.GetCustomAttribute<CollectionAttribute>()!))
+            .Where(property => property.IsDefined(typeof(ReferenceAttribute)) && CollectionMapping.IsCollection(property.PropertyType))
+            .Select(property => CollectionMapping.Create(type, property, property.GetCustomAttribute<ReferenceAttribute>()!))
             .ToArray();
         return new TableMapping<T>(table, columns.ToArray(), collections);
     }

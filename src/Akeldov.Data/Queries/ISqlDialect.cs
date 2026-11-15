@@ -6,6 +6,7 @@ internal interface ISqlDialect
 {
     StringComparer ColumnNameComparer { get; }
     bool SupportsCollectionContains => false;
+    bool LoadsReferenceCollections => false;
     string QuoteIdentifier(string name);
     string GetParameterPlaceholder(int index);
     string FormatBooleanCondition(string operand);

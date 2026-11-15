@@ -39,6 +39,9 @@ internal sealed class CreateGraph(StringComparer columnNameComparer, ICreateGrap
         {
             var reference = navigation.GetCustomAttribute<ReferenceAttribute>();
             if (reference is null) continue;
+            // Collection references describe inverse relationships and are loaded by Select.
+            // Create retains its existing single-entity reference behavior.
+            if (CollectionMapping.IsCollection(navigation.PropertyType)) continue;
             if (navigation.GetGetMethod() is null || navigation.GetIndexParameters().Length != 0
                 || navigation.IsDefined(typeof(ColumnAttribute)))
                 throw InvalidReference(navigation, "must have a public getter, must not be an indexer or a Column");

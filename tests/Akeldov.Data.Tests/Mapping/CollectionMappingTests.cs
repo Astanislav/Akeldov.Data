@@ -9,7 +9,7 @@ public class CollectionMappingTests
     [TestCase("")]
     [TestCase(" ")]
     public void Attribute_RejectsEmptyForeignKey(string? name)
-        => Assert.That(() => new CollectionAttribute(name!), Throws.InstanceOf<ArgumentException>());
+        => Assert.That(() => new ReferenceAttribute(name!), Throws.InstanceOf<ArgumentException>());
 
     [Test]
     public void Create_ResolvesChildForeignKeyAndParentKeyWithoutReadingCollection()
@@ -25,7 +25,7 @@ public class CollectionMappingTests
         Assert.That(relation.ForeignKey.Name, Is.EqualTo(nameof(Item.OrderId)));
         Assert.That(relation.ForeignKeyColumn, Is.EqualTo("owner_id"));
         Assert.That(mapping.ColumnNames, Is.EqualTo(new[] { "order_id" }));
-        Assert.That(mapping.Collections, Has.Count.EqualTo(4));
+        Assert.That(mapping.Collections, Has.Count.EqualTo(2));
         Assert.That(() => mapping.GetCollection(typeof(Order).GetProperty(nameof(Order.Unmapped))!),
             Throws.TypeOf<NotSupportedException>());
     }
@@ -42,7 +42,7 @@ public class CollectionMappingTests
     public void Create_InvalidRelationship_Throws(Type parent, string name)
     {
         var property = parent.GetProperty(name)!;
-        var attribute = (CollectionAttribute)Attribute.GetCustomAttribute(property, typeof(CollectionAttribute))!;
+        var attribute = (ReferenceAttribute)Attribute.GetCustomAttribute(property, typeof(ReferenceAttribute))!;
         Assert.That(() => CollectionMapping.Create(parent, property, attribute),
             Throws.InvalidOperationException.With.Message.Contains("Collection"));
     }
@@ -59,14 +59,28 @@ public class CollectionMappingTests
         Assert.That(relation.ForeignKey.Name, Is.EqualTo(nameof(Node.ParentId)));
     }
 
+    [Test]
+    public void CreateGraph_CollectionReferenceIsNotReadOrInserted()
+    {
+        var builder = new Builder();
+        using var graph = new CreateGraph(StringComparer.Ordinal, builder);
+        graph.Prepare(new Order()); // Items getter throws if collection is traversed.
+        graph.Complete();
+        Assert.That(builder.Count, Is.EqualTo(1));
+    }
+
+    private sealed class Builder : ICreateGraphCommandBuilder
+    {
+        internal int Count { get; private set; }
+        public void Add<T>(T entity) where T : class, new() => Count++;
+    }
+
     [Table("dbo", "orders")]
     public class Order
     {
         [Key, Column("order_id")] public int Id { get; set; }
-        [Collection(nameof(Item.OrderId))] public List<Item> Items => throw new InvalidOperationException();
-        [Collection(nameof(Item.OrderId))] public Item[] ArrayItems { get; set; } = [];
-        [Collection(nameof(Item.OrderId))] public ICollection<Item> CollectionItems { get; set; } = new List<Item>();
-        [Collection(nameof(Item.OrderId))] public IEnumerable<Item> EnumerableItems { get; set; } = [];
+        [Reference(nameof(Item.OrderId))] public List<Item> Items { get => throw new InvalidOperationException(); set { } }
+        [Reference(nameof(Item.OrderId))] public Item[] ArrayItems { get; set; } = [];
         public List<Item> Unmapped { get; set; } = [];
     }
 
@@ -78,29 +92,29 @@ public class CollectionMappingTests
 
     public class MissingForeignKey
     {
-        [Collection("Missing")] public List<Item> Items { get; set; } = [];
+        [Reference("Missing")] public List<Item> Items { get; set; } = [];
     }
 
     [Table("dbo", "wrong")]
     public class WrongParent
     {
         [Key, Column("id")] public int Id { get; set; }
-        [Collection(nameof(Item.OrderId))] public List<Item> Items { get; set; } = [];
+        [Reference(nameof(Item.OrderId))] public List<Item> Items { get; set; } = [];
     }
 
     public class InvalidNavigation
     {
-        [Collection("Id")] public string Text { get; set; } = "";
-        [Collection("Id")] public Item Scalar { get; set; } = new();
-        [Collection("Id"), Column("items")] public List<Item> Column { get; set; } = [];
-        [Collection("Id"), Reference("Id")] public List<Item> Reference { get; set; } = [];
-        [Collection("Id")] public List<MissingForeignKey> UnmappedChildren { get; set; } = [];
+        [Reference("Id")] public string Text { get; set; } = "";
+        [Reference("Id")] public Item Scalar { get; set; } = new();
+        [Reference("Id"), Column("items")] public List<Item> Column { get; set; } = [];
+        [Reference("Id")] public List<Item> Reference { get; } = [];
+        [Reference("Id")] public List<MissingForeignKey> UnmappedChildren { get; set; } = [];
     }
 
     public class IncompatibleParent
     {
         [Key, Column("id")] public int Id { get; set; }
-        [Collection(nameof(IncompatibleItem.ParentId))] public List<IncompatibleItem> Items { get; set; } = [];
+        [Reference(nameof(IncompatibleItem.ParentId))] public List<IncompatibleItem> Items { get; set; } = [];
     }
 
     [Table("dbo", "items")]
@@ -114,7 +128,7 @@ public class CollectionMappingTests
     {
         [Key, Column("id")] public int Id { get; set; }
         [Key, Column("other_id")] public int OtherId { get; set; }
-        [Collection(nameof(CompositeItem.ParentId))] public List<CompositeItem> Items { get; set; } = [];
+        [Reference(nameof(CompositeItem.ParentId))] public List<CompositeItem> Items { get; set; } = [];
     }
 
     [Table("dbo", "items")]
@@ -129,6 +143,6 @@ public class CollectionMappingTests
     {
         [Key, Column("id")] public int Id { get; set; }
         [Column("parent_id"), ForeignKey(typeof(Node), nameof(Id))] public int? ParentId { get; set; }
-        [Collection(nameof(ParentId))] public List<Node> Children { get; set; } = [];
+        [Reference(nameof(ParentId))] public List<Node> Children { get; set; } = [];
     }
 }
