@@ -222,6 +222,17 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
     {
         expression = UnwrapConversion(expression);
 
+        if (expression is MethodCallExpression call
+            && call.Method.DeclaringType == typeof(string)
+            && call.Method.Name is nameof(string.ToLower) or nameof(string.ToUpper)
+            && call.Arguments.Count == 0
+            && call.Object is MemberExpression { Member: PropertyInfo, Expression: var owner }
+            && owner == rowParameter)
+        {
+            var operand = TranslateOperand(call.Object);
+            return new Operand(dialect.FormatStringCase(operand.Sql, call.Method.Name), operand.CanBeNull);
+        }
+
         if (expression is MemberExpression { Member: PropertyInfo property } member
             && member.Expression == rowParameter)
         {

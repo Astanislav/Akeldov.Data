@@ -1,5 +1,11 @@
 # SQL Server
 
+Comparisons such as `row.Name.ToLower() == value` and `row.Name.ToUpper() == value`
+use `LOWER([Name])` and `UPPER([Name])` with a parameter for `value`.
+Existing null comparison guards and logical operators are preserved. These
+parameterless methods are supported on mapped string properties; culture overloads
+are not supported. Case conversion follows SQL Server collation, not .NET culture.
+
 `row => ids.Contains(row.Id)` translates to `([Id] IN (@p0, @p1, ...))`.
 Captured arrays and `List<T>` (also through `IEnumerable<T>` / `ICollection<T>`),
 and inline arrays are supported. Each non-null element gets a parameter.

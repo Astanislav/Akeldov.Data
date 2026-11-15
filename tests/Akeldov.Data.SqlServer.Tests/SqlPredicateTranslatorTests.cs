@@ -9,6 +9,50 @@ namespace Akeldov.Data.SqlServer.Tests;
 [TestFixture]
 public class SqlPredicateTranslatorTests
 {
+    [TestCase(false, "LOWER")]
+    [TestCase(true, "UPPER")]
+    public void Translate_StringCase_UsesSqlFunctionAndCapturedParameter(bool upper, string function)
+    {
+        var value = "Robert'); DROP TABLE users;--";
+        Expression<Func<User, bool>> predicate = upper
+            ? user => user.Name!.ToUpper() == value
+            : user => user.Name!.ToLower() == value;
+        var result = Translate(predicate);
+
+        Assert.That(result.Sql, Is.EqualTo($"({function}([display_name]) IS NOT NULL AND {function}([display_name]) = @p0)"));
+        Assert.That(result.Parameters, Has.Length.EqualTo(1));
+        Assert.That(result.Parameters[0].Value, Is.EqualTo(value));
+        Assert.That(result.Parameters[0].SqlDbType, Is.EqualTo(SqlDbType.NVarChar));
+        value = "changed";
+        Assert.That(Translate(predicate).Parameters[0].Value, Is.EqualTo(value));
+    }
+
+    [Test]
+    public void Translate_StringCase_NullComparisonUsesIsNull()
+    {
+        var result = Translate(user => user.Name!.ToLower() == null || user.Name!.ToUpper() != null);
+        Assert.That(result.Sql, Is.EqualTo("((LOWER([display_name]) IS NULL) OR (UPPER([display_name]) IS NOT NULL))"));
+        Assert.That(result.Parameters, Is.Empty);
+    }
+
+    [Test]
+    public void Translate_StringCase_ComposesWithNegationAndReversedComparison()
+    {
+        var result = Translate(user => !(user.Name!.ToLower() == "abc") && "XYZ" == user.Name!.ToUpper());
+        Assert.That(result.Sql, Is.EqualTo("((NOT (LOWER([display_name]) IS NOT NULL AND LOWER([display_name]) = @p0)) AND (UPPER([display_name]) IS NOT NULL AND @p1 = UPPER([display_name])))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new[] { "abc", "XYZ" }));
+    }
+
+    [Test]
+    public void Translate_StringCase_RejectsCultureOverloadsAndUnmappedProperties()
+    {
+        Assert.That(() => Translate(user => user.Name!.ToLower(CultureInfo.InvariantCulture) == "abc"), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Translate(user => user.Name!.ToUpper(CultureInfo.InvariantCulture) == "ABC"), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => SqlPredicateTranslator<SqlServerDialectTests.Row>.Translate(
+            TableMapping<SqlServerDialectTests.Row>.Create(), row => row.Unmapped!.ToLower() == "abc", SqlServerDialect.Instance),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
     [Test]
     public void Translate_CollectionContains_ParameterizesArraysListsAndInlineArrays()
     {
