@@ -9,6 +9,36 @@ namespace Akeldov.Data.SqlServer.Tests;
 [TestFixture]
 public class SqlPredicateTranslatorTests
 {
+    [TestCase("Alice", "%Alice%")]
+    [TestCase("", "%%")]
+    [TestCase("50%_[x]~", "%50~%~_~[x]~~%")]
+    [TestCase("Robert'); DROP TABLE users;--", "%Robert'); DROP TABLE users;--%")]
+    public void Translate_Contains_UsesEscapedParameterizedPattern(string value, string pattern)
+    {
+        var result = Translate(user => user.Name!.Contains(value));
+
+        Assert.That(result.Sql, Is.EqualTo("([display_name] LIKE @p0 ESCAPE '~')"));
+        Assert.That(result.Parameters, Has.Length.EqualTo(1));
+        Assert.That(result.Parameters[0].Value, Is.EqualTo(pattern));
+        Assert.That(result.Parameters[0].SqlDbType, Is.EqualTo(SqlDbType.NVarChar));
+    }
+
+    [Test]
+    public void Translate_ContainsLiteralWithLogicalOperators_PreservesGroupingAndParameterOrder()
+    {
+        var result = Translate(user => user.Id > 5 && (!user.Name!.Contains("Alice") || user.Name.Contains("Bob")));
+
+        Assert.That(result.Sql, Is.EqualTo("(([user_id] > @p0) AND ((NOT ([display_name] LIKE @p1 ESCAPE '~')) OR ([display_name] LIKE @p2 ESCAPE '~')))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new object[] { 5, "%Alice%", "%Bob%" }));
+    }
+
+    [Test]
+    public void Translate_ContainsNull_Throws()
+    {
+        string value = null!;
+        Assert.That(() => Translate(user => user.Name!.Contains(value)), Throws.ArgumentNullException);
+    }
+
     [TestCase(ExpressionType.Equal, "=")]
     [TestCase(ExpressionType.NotEqual, "<>")]
     [TestCase(ExpressionType.GreaterThan, ">")]
@@ -242,6 +272,9 @@ public class SqlPredicateTranslatorTests
         Expression<Func<User, bool>>[] predicates =
         [
             user => user.Name!.StartsWith("A"),
+            user => user.Name!.Contains("A", StringComparison.OrdinalIgnoreCase),
+            user => user.Name!.Contains('A'),
+            user => user.Name!.Contains(user.Name),
             user => user.Id + 1 > 5,
             user => user.Unmapped == 1,
             user => user.Name!.Length > 3,

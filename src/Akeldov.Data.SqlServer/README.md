@@ -1,5 +1,13 @@
 # SQL Server
 
+String filters such as `row => row.Name.Contains("Alice")` translate to
+`[Name] LIKE @p0 ESCAPE '~'`, with `@p0 = '%Alice%'`. Captured string values,
+empty strings and combinations with `!`, `&&` and `||` are supported.
+LIKE wildcard characters in the search text are escaped and values are parameterized.
+Matching follows the SQL Server column collation. NULL columns follow SQL LIKE
+semantics (including under negation). Null search values and the `char` and
+`StringComparison` overloads are not supported.
+
 `Create` and `CreateAsync` insert mapped rows and recursively save entities marked with `Reference`.
 The referenced entity is inserted first; its `Key` value is then copied into the
 local property named by `Reference`, which must have `Column` and `ForeignKey`.
