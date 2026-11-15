@@ -14,10 +14,11 @@ internal sealed class SqlServerDialect : ISqlDialect
     public string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
     public string GetParameterPlaceholder(int index) => $"@p{index}";
     public string FormatBooleanCondition(string operand) => $"({operand} = 1)";
-    public string FormatStringCase(string operand, string methodName) => methodName switch
+    public string FormatStringFunction(string operand, string methodName) => methodName switch
     {
         nameof(string.ToLower) => $"LOWER({operand})",
         nameof(string.ToUpper) => $"UPPER({operand})",
+        nameof(string.Trim) => $"LTRIM(RTRIM({operand}))",
         _ => throw new NotSupportedException($"String.{methodName} is not supported by this SQL dialect.")
     };
     public string FormatIsNullOrEmptyCondition(string operand)

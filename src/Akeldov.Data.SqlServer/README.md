@@ -1,5 +1,11 @@
 # SQL Server
 
+`row.Name.Trim() == value` uses `LTRIM(RTRIM([Name]))` with a parameter for
+`value`, preserving null comparison guards and logical operators.
+Only parameterless `Trim()` on mapped string properties is supported.
+SQL Server removes ordinary spaces (U+0020); unlike .NET `Trim()`, this does not
+remove tabs, line breaks or other Unicode whitespace.
+
 Comparisons such as `row.Name.ToLower() == value` and `row.Name.ToUpper() == value`
 use `LOWER([Name])` and `UPPER([Name])` with a parameter for `value`.
 Existing null comparison guards and logical operators are preserved. These

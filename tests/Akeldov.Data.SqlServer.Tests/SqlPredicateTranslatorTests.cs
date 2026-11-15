@@ -9,6 +9,49 @@ namespace Akeldov.Data.SqlServer.Tests;
 [TestFixture]
 public class SqlPredicateTranslatorTests
 {
+    [TestCase("abc")]
+    [TestCase("")]
+    [TestCase("  abc  ")]
+    [TestCase("Robert'); DROP TABLE users;--")]
+    public void Translate_Trim_UsesSqlFunctionAndUnmodifiedParameter(string value)
+    {
+        Expression<Func<User, bool>> predicate = user => user.Name!.Trim() == value;
+        var result = Translate(predicate);
+
+        Assert.That(result.Sql, Is.EqualTo("(LTRIM(RTRIM([display_name])) IS NOT NULL AND LTRIM(RTRIM([display_name])) = @p0)"));
+        Assert.That(result.Parameters, Has.Length.EqualTo(1));
+        Assert.That(result.Parameters[0].Value, Is.EqualTo(value));
+        Assert.That(result.Parameters[0].SqlDbType, Is.EqualTo(SqlDbType.NVarChar));
+        value = "changed";
+        Assert.That(Translate(predicate).Parameters[0].Value, Is.EqualTo(value));
+    }
+
+    [Test]
+    public void Translate_Trim_NullComparisonUsesIsNull()
+    {
+        var result = Translate(user => user.Name!.Trim() == null || user.Name!.Trim() != null);
+        Assert.That(result.Sql, Is.EqualTo("((LTRIM(RTRIM([display_name])) IS NULL) OR (LTRIM(RTRIM([display_name])) IS NOT NULL))"));
+        Assert.That(result.Parameters, Is.Empty);
+    }
+
+    [Test]
+    public void Translate_Trim_ComposesWithNegationAndReversedComparison()
+    {
+        var result = Translate(user => !(user.Name!.Trim() == "abc") && "xyz" == user.Name!.Trim());
+        Assert.That(result.Sql, Is.EqualTo("((NOT (LTRIM(RTRIM([display_name])) IS NOT NULL AND LTRIM(RTRIM([display_name])) = @p0)) AND (LTRIM(RTRIM([display_name])) IS NOT NULL AND @p1 = LTRIM(RTRIM([display_name]))))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new[] { "abc", "xyz" }));
+    }
+
+    [Test]
+    public void Translate_Trim_RejectsCharacterOverloadsAndUnmappedProperties()
+    {
+        Assert.That(() => Translate(user => user.Name!.Trim('x') == "abc"), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Translate(user => user.Name!.Trim(new[] { 'x', 'y' }) == "abc"), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => SqlPredicateTranslator<SqlServerDialectTests.Row>.Translate(
+            TableMapping<SqlServerDialectTests.Row>.Create(), row => row.Unmapped!.Trim() == "abc", SqlServerDialect.Instance),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
     [TestCase(false, "LOWER")]
     [TestCase(true, "UPPER")]
     public void Translate_StringCase_UsesSqlFunctionAndCapturedParameter(bool upper, string function)
