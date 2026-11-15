@@ -5,6 +5,7 @@ namespace Akeldov.Data;
 internal interface ISqlDialect
 {
     StringComparer ColumnNameComparer { get; }
+    bool SupportsCollectionContains => false;
     string QuoteIdentifier(string name);
     string GetParameterPlaceholder(int index);
     string FormatBooleanCondition(string operand);

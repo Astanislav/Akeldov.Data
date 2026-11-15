@@ -10,6 +10,98 @@ namespace Akeldov.Data.SqlServer.Tests;
 public class SqlPredicateTranslatorTests
 {
     [Test]
+    public void Translate_CollectionContains_ParameterizesArraysListsAndInlineArrays()
+    {
+        int[] ids = [1, 3, 7];
+        var list = ids.ToList();
+        ICollection<int> collection = list;
+        IEnumerable<int> enumerable = ids;
+        Expression<Func<User, bool>>[] predicates =
+        [
+            user => ids.Contains(user.Id),
+            user => list.Contains(user.Id),
+            user => collection.Contains(user.Id),
+            user => enumerable.Contains(user.Id),
+            user => new[] { 1, 3, 7 }.Contains(user.Id)
+        ];
+        foreach (var predicate in predicates)
+        {
+            var result = Translate(predicate);
+            Assert.That(result.Sql, Is.EqualTo("([user_id] IN (@p0, @p1, @p2))"));
+            Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(ids));
+        }
+    }
+
+    [Test]
+    public void Translate_CollectionContains_ComposesAndReadsCurrentValues()
+    {
+        var ids = new List<int> { 1, 2 };
+        Expression<Func<User, bool>> predicate = user => user.Id > 0 && !ids.Contains(user.Id);
+        var first = Translate(predicate);
+        Assert.That(first.Sql, Is.EqualTo("(([user_id] > @p0) AND (NOT ([user_id] IN (@p1, @p2))))"));
+        Assert.That(first.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new[] { 0, 1, 2 }));
+        ids.Clear();
+        var empty = Translate(predicate);
+        Assert.That(empty.Sql, Is.EqualTo("(([user_id] > @p0) AND (NOT (1 = 0)))"));
+        Assert.That(empty.Parameters, Has.Length.EqualTo(1));
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void Translate_CollectionContainsNullable_MatchesCSharpIncludingNegation(bool includeNull, bool empty)
+    {
+        int?[] scores = empty ? [] : includeNull ? [null, 1] : [1, 2];
+        using var table = new DataTable();
+        table.Columns.Add("score", typeof(int));
+        foreach (int? score in new int?[] { null, 0, 1, 2 }) table.Rows.Add((object?)score ?? DBNull.Value);
+
+        foreach (var negate in new[] { false, true })
+        {
+            Expression<Func<User, bool>> predicate = negate
+                ? user => !scores.Contains(user.Score)
+                : user => scores.Contains(user.Score);
+            var result = Translate(predicate);
+            var filter = result.Sql;
+            foreach (var parameter in result.Parameters.Reverse())
+                filter = filter.Replace(parameter.ParameterName, Convert.ToString(parameter.Value, CultureInfo.InvariantCulture));
+            var actual = table.Select(filter).Select(row => row.Field<int?>("score"));
+            var expected = new int?[] { null, 0, 1, 2 }.Where(score => negate != scores.Contains(score));
+            Assert.That(actual, Is.EquivalentTo(expected));
+        }
+    }
+
+    [Test]
+    public void Translate_CollectionContainsNullOnly_UsesIsNull()
+    {
+        string?[] names = [null];
+        var result = Translate(user => names.Contains(user.Name));
+        Assert.That(result.Sql, Is.EqualTo("([display_name] IS NULL)"));
+        Assert.That(result.Parameters, Is.Empty);
+    }
+
+    [Test]
+    public void Translate_CollectionContainsStrings_KeepsValuesOutsideSql()
+    {
+        string[] names = ["Robert'); DROP TABLE users;--", "Alice"];
+        var result = Translate(user => names.Contains(user.Name));
+        Assert.That(result.Sql, Is.EqualTo("([display_name] IS NOT NULL AND [display_name] IN (@p0, @p1))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(names));
+    }
+
+    [Test]
+    public void Translate_CollectionContains_RejectsNullAndDeferredSourcesAndComparer()
+    {
+        int[] ids = null!;
+        Assert.That(() => Translate(user => ids.Contains(user.Id)), Throws.ArgumentNullException);
+        IEnumerable<int> deferred = Enumerable.Range(1, 3);
+        Assert.That(() => Translate(user => deferred.Contains(user.Id)), Throws.TypeOf<NotSupportedException>());
+        ids = [1, 2];
+        Assert.That(() => Translate(user => ids.Contains(user.Id, EqualityComparer<int>.Default)), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
     public void Translate_IsNullOrEmpty_ChecksNullAndExactEmptyWithoutParameters()
     {
         var result = Translate(user => string.IsNullOrEmpty(user.Name));

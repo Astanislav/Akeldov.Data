@@ -1,5 +1,14 @@
 # SQL Server
 
+`row => ids.Contains(row.Id)` translates to `([Id] IN (@p0, @p1, ...))`.
+Captured arrays and `List<T>` (also through `IEnumerable<T>` / `ICollection<T>`),
+and inline arrays are supported. Each non-null element gets a parameter.
+Empty collections produce `(1 = 0)`; null elements use `IS NULL`, preserving
+membership semantics for nullable columns and negation. Values are read on each
+translation. Null collections, deferred sequences, custom collections and explicit
+comparers are not supported. String comparisons follow SQL Server collation.
+Large collections remain subject to SQL Server's command parameter limit.
+
 String filters such as `row => row.Name.Contains("Alice")` translate to
 `[Name] LIKE @p0 ESCAPE '~'`, with `@p0 = '%Alice%'`.
 `row.Name.StartsWith("Alice")` uses `@p0 = 'Alice%'`, and

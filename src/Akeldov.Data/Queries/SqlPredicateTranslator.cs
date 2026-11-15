@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -71,6 +72,23 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
             return dialect.FormatLikeCondition(operand.Sql, parameter.ParameterName);
         }
 
+        if (expression is MethodCallExpression contains && dialect.SupportsCollectionContains
+            && contains.Method.Name == nameof(Enumerable.Contains))
+        {
+            if (contains.Method.DeclaringType == typeof(Enumerable) && contains.Arguments.Count == 2)
+            {
+                return TranslateCollectionContains(contains.Arguments[0], contains.Arguments[1]);
+            }
+
+            if (contains.Object is not null && contains.Arguments.Count == 1
+                && contains.Method.DeclaringType is { IsGenericType: true } declaringType
+                && (declaringType.GetGenericTypeDefinition() == typeof(List<>)
+                    || declaringType.GetGenericTypeDefinition() == typeof(ICollection<>)))
+            {
+                return TranslateCollectionContains(contains.Object, contains.Arguments[0]);
+            }
+        }
+
         if (expression.Type == typeof(bool))
         {
             var operand = TranslateOperand(expression);
@@ -78,6 +96,52 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
         }
 
         throw Unsupported(expression);
+    }
+
+    private string TranslateCollectionContains(Expression collection, Expression item)
+    {
+        if (UnwrapConversion(item) is not MemberExpression { Member: PropertyInfo, Expression: var owner }
+            || owner != rowParameter)
+        {
+            throw Unsupported(item);
+        }
+
+        var operand = TranslateOperand(item);
+        var source = collection is NewArrayExpression { NodeType: ExpressionType.NewArrayInit } array
+            ? array.Expressions.Select(ReadValue).ToArray()
+            : ReadValue(collection);
+        ArgumentNullException.ThrowIfNull(source);
+        // Only materialized arrays/lists: do not execute deferred queries or custom collection code.
+        var type = source.GetType();
+        if (source is not Array && !(type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)))
+        {
+            throw Unsupported(collection);
+        }
+
+        var placeholders = new List<string>();
+        var hasNull = false;
+        foreach (var value in (IEnumerable)source)
+        {
+            if (value is null)
+            {
+                hasNull = true;
+                continue;
+            }
+
+            var parameter = new QueryParameter(dialect.GetParameterPlaceholder(parameters.Count), NormalizeValue(value));
+            parameters.Add(parameter);
+            placeholders.Add(parameter.ParameterName);
+        }
+
+        if (placeholders.Count == 0)
+        {
+            return hasNull && operand.CanBeNull ? $"({operand.Sql} IS NULL)" : "(1 = 0)";
+        }
+
+        var match = $"{operand.Sql} IN ({string.Join(", ", placeholders)})";
+        if (!operand.CanBeNull) return $"({match})";
+        var guarded = $"({operand.Sql} IS NOT NULL AND {match})";
+        return hasNull ? $"({operand.Sql} IS NULL OR {guarded})" : guarded;
     }
 
     private string TranslateComparison(BinaryExpression expression)
