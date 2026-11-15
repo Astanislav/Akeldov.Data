@@ -46,7 +46,7 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
 
         if (expression is MethodCallExpression call
             && call.Method.DeclaringType == typeof(string)
-            && call.Method.Name == nameof(string.Contains)
+            && call.Method.Name is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith)
             && call.Object is MemberExpression { Member: PropertyInfo, Expression: var target }
             && target == rowParameter
             && call.Arguments.Count == 1 && call.Arguments[0].Type == typeof(string))
@@ -54,10 +54,10 @@ internal sealed class SqlPredicateTranslator<T> where T : class, new()
             var operand = TranslateOperand(call.Object);
             var value = (string?)ReadValue(call.Arguments[0]);
             ArgumentNullException.ThrowIfNull(value);
-            var pattern = dialect.CreateContainsPattern(value);
+            var pattern = dialect.CreateStringPattern(value, call.Method.Name);
             var parameter = new QueryParameter(dialect.GetParameterPlaceholder(parameters.Count), pattern);
             parameters.Add(parameter);
-            return dialect.FormatContainsCondition(operand.Sql, parameter.ParameterName);
+            return dialect.FormatLikeCondition(operand.Sql, parameter.ParameterName);
         }
 
         if (expression.Type == typeof(bool))

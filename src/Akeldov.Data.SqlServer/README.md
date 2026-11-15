@@ -1,7 +1,9 @@
 # SQL Server
 
 String filters such as `row => row.Name.Contains("Alice")` translate to
-`[Name] LIKE @p0 ESCAPE '~'`, with `@p0 = '%Alice%'`. Captured string values,
+`[Name] LIKE @p0 ESCAPE '~'`, with `@p0 = '%Alice%'`.
+`row.Name.StartsWith("Alice")` uses `@p0 = 'Alice%'`, and
+`row.Name.EndsWith("Alice")` uses `@p0 = '%Alice'`. Captured string values,
 empty strings and combinations with `!`, `&&` and `||` are supported.
 LIKE wildcard characters in the search text are escaped and values are parameterized.
 Matching follows the SQL Server column collation. NULL columns follow SQL LIKE

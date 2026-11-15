@@ -13,9 +13,19 @@ internal sealed class SqlServerDialect : ISqlDialect
     public string QuoteIdentifier(string name) => $"[{name.Replace("]", "]]")}]";
     public string GetParameterPlaceholder(int index) => $"@p{index}";
     public string FormatBooleanCondition(string operand) => $"({operand} = 1)";
-    public string CreateContainsPattern(string value)
-        => $"%{value.Replace("~", "~~").Replace("%", "~%").Replace("_", "~_").Replace("[", "~[")}%";
-    public string FormatContainsCondition(string operand, string parameter)
+    public string CreateStringPattern(string value, string methodName)
+    {
+        var escaped = value.Replace("~", "~~").Replace("%", "~%").Replace("_", "~_").Replace("[", "~[");
+        return methodName switch
+        {
+            nameof(string.Contains) => $"%{escaped}%",
+            nameof(string.StartsWith) => $"{escaped}%",
+            nameof(string.EndsWith) => $"%{escaped}",
+            _ => throw new NotSupportedException($"String.{methodName} is not supported by this SQL dialect.")
+        };
+    }
+
+    public string FormatLikeCondition(string operand, string parameter)
         => $"({operand} LIKE {parameter} ESCAPE '~')";
 
     public DbParameter CreateParameter(QueryParameter parameter)

@@ -9,6 +9,42 @@ namespace Akeldov.Data.SqlServer.Tests;
 [TestFixture]
 public class SqlPredicateTranslatorTests
 {
+    [TestCase("abc", "abc%", "%abc")]
+    [TestCase("", "%", "%")]
+    [TestCase("50%_[x]~", "50~%~_~[x]~~%", "%50~%~_~[x]~~")]
+    [TestCase("O'Brien", "O'Brien%", "%O'Brien")]
+    public void Translate_StartsWithAndEndsWith_UseEscapedParameters(string value, string prefixPattern, string suffixPattern)
+    {
+        var prefix = Translate(user => user.Name!.StartsWith(value));
+        var suffix = Translate(user => user.Name!.EndsWith(value));
+
+        foreach (var result in new[] { prefix, suffix })
+        {
+            Assert.That(result.Sql, Is.EqualTo("([display_name] LIKE @p0 ESCAPE '~')"));
+            Assert.That(result.Parameters, Has.Length.EqualTo(1));
+            Assert.That(result.Parameters[0].SqlDbType, Is.EqualTo(SqlDbType.NVarChar));
+        }
+        Assert.That(prefix.Parameters[0].Value, Is.EqualTo(prefixPattern));
+        Assert.That(suffix.Parameters[0].Value, Is.EqualTo(suffixPattern));
+    }
+
+    [Test]
+    public void Translate_StartsWithAndEndsWith_ComposeWithLogicalOperators()
+    {
+        var result = Translate(user => user.Id > 5 && (!user.Name!.StartsWith("abc") || user.Name.EndsWith("xyz")));
+
+        Assert.That(result.Sql, Is.EqualTo("(([user_id] > @p0) AND ((NOT ([display_name] LIKE @p1 ESCAPE '~')) OR ([display_name] LIKE @p2 ESCAPE '~')))"));
+        Assert.That(result.Parameters.Select(parameter => parameter.Value), Is.EqualTo(new object[] { 5, "abc%", "%xyz" }));
+    }
+
+    [Test]
+    public void Translate_StartsWithAndEndsWithNull_Throw()
+    {
+        string value = null!;
+        Assert.That(() => Translate(user => user.Name!.StartsWith(value)), Throws.ArgumentNullException);
+        Assert.That(() => Translate(user => user.Name!.EndsWith(value)), Throws.ArgumentNullException);
+    }
+
     [TestCase("Alice", "%Alice%")]
     [TestCase("", "%%")]
     [TestCase("50%_[x]~", "%50~%~_~[x]~~%")]
@@ -271,7 +307,12 @@ public class SqlPredicateTranslatorTests
     {
         Expression<Func<User, bool>>[] predicates =
         [
-            user => user.Name!.StartsWith("A"),
+            user => user.Name!.StartsWith("A", StringComparison.OrdinalIgnoreCase),
+            user => user.Name!.EndsWith("A", StringComparison.OrdinalIgnoreCase),
+            user => user.Name!.StartsWith('A'),
+            user => user.Name!.EndsWith('A'),
+            user => user.Name!.StartsWith(user.Name),
+            user => user.Name!.EndsWith(user.Name),
             user => user.Name!.Contains("A", StringComparison.OrdinalIgnoreCase),
             user => user.Name!.Contains('A'),
             user => user.Name!.Contains(user.Name),
