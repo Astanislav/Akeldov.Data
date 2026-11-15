@@ -3,6 +3,46 @@
 Contains mapping attributes and shared query infrastructure used by the database
 providers. SQL identifiers and parameters are supplied by each provider's dialect.
 
+## Collection relationships
+
+Use `Collection` on a navigation to name the child's CLR foreign key property:
+
+```csharp
+[Table("dbo", "Orders")]
+public class Order
+{
+    [Key, Column("Id")]
+    public int Id { get; set; }
+
+    [Collection(nameof(OrderItem.OrderId))]
+    public List<OrderItem> Items { get; set; } = [];
+}
+
+[Table("dbo", "OrderItems")]
+public class OrderItem
+{
+    [Key, Column("Id")]
+    public int Id { get; set; }
+
+    [Column("OrderId"), ForeignKey(typeof(Order), nameof(Order.Id))]
+    public int OrderId { get; set; }
+
+    [Column("Price")]
+    public decimal Price { get; set; }
+}
+```
+
+The shared table mapper validates the relationship and records the child table,
+parent key and child foreign key without reading the collection. Arrays, lists and
+`IEnumerable<T>` collection interfaces are supported, including getter-only
+navigations. The child must be a mapped concrete entity with a public parameterless
+constructor. The foreign key must reference the declaring model's single mapped
+`Key` and have a compatible type (nullable foreign keys are allowed). Composite
+parent keys are currently rejected. Navigations cannot also be `Column` or `Reference`.
+
+This is relationship metadata only. It does not automatically load or save children,
+create database constraints, or enable collection aggregates in predicates yet.
+
 ## Update infrastructure
 
 `UpdateExecutor` is internal infrastructure analogous to `CreateExecutor`:

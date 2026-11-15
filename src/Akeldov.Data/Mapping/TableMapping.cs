@@ -9,13 +9,19 @@ internal sealed class TableMapping<T> where T : class, new()
 {
     private readonly (PropertyInfo Property, string Name)[] columns;
 
-    private TableMapping(TableAttribute table, (PropertyInfo Property, string Name)[] columns)
+    private TableMapping(TableAttribute table, (PropertyInfo Property, string Name)[] columns, CollectionMapping[] collections)
     {
         Table = table;
         this.columns = columns;
+        Collections = collections;
     }
 
     internal TableAttribute Table { get; }
+    internal IReadOnlyList<CollectionMapping> Collections { get; }
+
+    internal CollectionMapping GetCollection(PropertyInfo property)
+        => Collections.SingleOrDefault(collection => collection.Property == property)
+            ?? throw new NotSupportedException($"Property '{property.Name}' must be mapped with a Collection attribute.");
 
     internal IEnumerable<string> ColumnNames => columns.Select(column => column.Name);
 
@@ -101,7 +107,11 @@ internal sealed class TableMapping<T> where T : class, new()
             throw new InvalidOperationException($"Type '{type.FullName}' must have at least one property with a Column attribute.");
         }
 
-        return new TableMapping<T>(table, columns.ToArray());
+        var collections = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(property => property.IsDefined(typeof(CollectionAttribute)))
+            .Select(property => CollectionMapping.Create(type, property, property.GetCustomAttribute<CollectionAttribute>()!))
+            .ToArray();
+        return new TableMapping<T>(table, columns.ToArray(), collections);
     }
 
     internal List<T> Read(IDataReader reader, CancellationToken cancellationToken = default)
